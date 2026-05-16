@@ -1,0 +1,8 @@
+{
+    "package": "kanjiDrawingAnki",
+    "name": "Kanji Drawing Canvas",
+    "human_version": "0.1.0",
+    "min_point_version": 45,
+    "conflicts": [],
+    "description": "Add a drawing canvas to any note type for kanji, hangul, or any character writing practice. Works on desktop and mobile."
+}

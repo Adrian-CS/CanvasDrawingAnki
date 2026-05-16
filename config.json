@@ -1,0 +1,8 @@
+{
+    "canvas_size": 300,
+    "grid_type": "tian",
+    "stroke_width": 3,
+    "stroke_color": "#1a1a1a",
+    "grid_color": "#cccccc",
+    "background_color": "#ffffff"
+}
