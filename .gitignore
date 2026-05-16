@@ -15,6 +15,9 @@ meta.json
 .DS_Store
 Thumbs.db
 
+# Build artifacts
+*.ankiaddon
+
 # IDE
 .vscode/
 .idea/
