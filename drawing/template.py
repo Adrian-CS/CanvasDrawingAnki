@@ -162,6 +162,21 @@ _CANVAS_JS = r"""(function () {
   cvs.addEventListener('pointerup',     endStroke);
   cvs.addEventListener('pointercancel', endStroke);
 
+  /* ── iOS WKWebView fix ───────────────────────────────────────────────
+     WKWebView's native swipe-back gesture recognizer intercepts horizontal
+     touches before pointer events can claim them. touch-action:none in CSS
+     is not honoured by the back-swipe gesture recognizer. The only reliable
+     fix is to add non-passive touch listeners that call preventDefault(),
+     which signals to the OS that the web content owns these touches.
+     Pointer events still fire normally after this — preventDefault() on a
+     touch event only suppresses browser defaults (scroll, navigate), not the
+     derived pointer event dispatch. ─────────────────────────────────── */
+  var _tp = { passive: false };
+  cvs.addEventListener('touchstart',  function (e) { e.preventDefault(); }, _tp);
+  cvs.addEventListener('touchmove',   function (e) { e.preventDefault(); }, _tp);
+  cvs.addEventListener('touchend',    function (e) { e.preventDefault(); }, _tp);
+  cvs.addEventListener('touchcancel', function (e) { e.preventDefault(); }, _tp);
+
   redraw(); tick();
 }());"""
 
