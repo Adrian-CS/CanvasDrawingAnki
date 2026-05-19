@@ -171,11 +171,18 @@ _CANVAS_JS = r"""(function () {
      Pointer events still fire normally after this — preventDefault() on a
      touch event only suppresses browser defaults (scroll, navigate), not the
      derived pointer event dispatch. ─────────────────────────────────── */
+  /* ── Contain all input events inside the canvas ─────────────────────
+     preventDefault() blocks browser defaults (scroll, navigate) but the
+     event still bubbles. AnkiMobile's tap-to-flip recognizer lives higher
+     in the tree, so we must also stopPropagation() on every touch/click
+     that originates inside the canvas. ─────────────────────────────── */
   var _tp = { passive: false };
-  cvs.addEventListener('touchstart',  function (e) { e.preventDefault(); }, _tp);
-  cvs.addEventListener('touchmove',   function (e) { e.preventDefault(); }, _tp);
-  cvs.addEventListener('touchend',    function (e) { e.preventDefault(); }, _tp);
-  cvs.addEventListener('touchcancel', function (e) { e.preventDefault(); }, _tp);
+  function _eat(e) { e.preventDefault(); e.stopPropagation(); }
+  cvs.addEventListener('touchstart',  _eat, _tp);
+  cvs.addEventListener('touchmove',   _eat, _tp);
+  cvs.addEventListener('touchend',    _eat, _tp);
+  cvs.addEventListener('touchcancel', _eat, _tp);
+  cvs.addEventListener('click',       _eat);
 
   redraw(); tick();
 }());"""
