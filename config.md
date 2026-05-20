@@ -18,8 +18,13 @@ Brush width in pixels.
 **`stroke_color`** *(string, default `"#1a1a1a"`)*
 Stroke colour. Accepts any CSS colour value (`"#ff0000"`, `"red"`, `"rgb(0,0,0)"`, …).
 
-**`grid_color`** *(string, default `"#cccccc"`)*
+**`grid_color`** *(string, default `"#aaaaaa"`)*
 Guide-line colour.
 
 **`background_color`** *(string, default `"#ffffff"`)*
 Canvas background colour.
+
+**`persist_drawing`** *(boolean, default `true`)*
+When `true`, the drawing is preserved when you flip the card to the answer side,
+so you can compare what you wrote against the correct character.
+When `false`, the canvas is always blank on the answer side.

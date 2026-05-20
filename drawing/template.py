@@ -21,6 +21,8 @@ _CANVAS_JS = r"""(function () {
   var GRID_ICONS = ['田', '米', '✕'];
   var gi = Math.max(0, GRIDS.indexOf(d.grid || 'tian'));
 
+  var PERSIST = (d.persist !== '0');   // true unless explicitly disabled
+
   var LABELS = {
     en: { clear: 'Clear', undo: 'Undo', strokes: 'Strokes' },
     es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos' },
@@ -29,7 +31,30 @@ _CANVAS_JS = r"""(function () {
   var lc = (navigator.language || 'en').slice(0, 2);
   var L  = LABELS[lc] || LABELS['en'];
 
+  /* ── Phase-based persistence ─────────────────────────────────────────
+     sessionStorage survives a card flip (front→back within the same
+     WebView session) but is cleared when Anki moves to a new card
+     and reloads the page.  We track a 'kda_phase' key so the script
+     can tell the difference between:
+       • "front of a new card"  → phase is absent or 'back'  → start clean
+       • "back after a flip"    → phase is 'front'           → restore strokes
+     After restoring, phase is set to 'back' so the NEXT run knows it
+     is a fresh card front again. ────────────────────────────────────── */
+  var _SS_KEY   = 'kda_strokes';
+  var _SS_PHASE = 'kda_phase';
+  var _phase;
+  try { _phase = sessionStorage.getItem(_SS_PHASE) || ''; } catch(e) { _phase = ''; }
+
   var strokes = [], cur = [], dn = false;
+
+  if (PERSIST && _phase === 'front') {
+    // Back side of the same card – restore what was drawn on the front
+    try { strokes = JSON.parse(sessionStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
+    try { sessionStorage.setItem(_SS_PHASE, 'back'); } catch(e) {}
+  } else {
+    // New card front – always start with a blank canvas
+    try { sessionStorage.removeItem(_SS_KEY); sessionStorage.setItem(_SS_PHASE, 'front'); } catch(e) {}
+  }
 
   /* ── Inject styles once so !important wins over Anki card themes ── */
   if (!document.getElementById('kda-style')) {
@@ -139,6 +164,9 @@ _CANVAS_JS = r"""(function () {
     ctr.textContent = strokes.length ? L.strokes + ': ' + strokes.length : '';
     undBtn.disabled = !strokes.length;
     clrBtn.disabled = !strokes.length;
+    if (PERSIST) {
+      try { sessionStorage.setItem(_SS_KEY, JSON.stringify(strokes)); } catch(e) {}
+    }
   }
 
   function pt(e) {
@@ -190,18 +218,20 @@ _CANVAS_JS = r"""(function () {
 
 def build_block(cfg: dict) -> str:
     """Return the full HTML block to inject into a card template."""
-    size = cfg.get("canvas_size", 300)
-    grid = cfg.get("grid_type", "tian")
-    sw   = cfg.get("stroke_width", 3)
-    sc   = cfg.get("stroke_color", "#1a1a1a")
-    gc   = cfg.get("grid_color", "#aaaaaa")
-    bg   = cfg.get("background_color", "#ffffff")
+    size    = cfg.get("canvas_size", 300)
+    grid    = cfg.get("grid_type", "tian")
+    sw      = cfg.get("stroke_width", 3)
+    sc      = cfg.get("stroke_color", "#1a1a1a")
+    gc      = cfg.get("grid_color", "#aaaaaa")
+    bg      = cfg.get("background_color", "#ffffff")
+    persist = "1" if cfg.get("persist_drawing", True) else "0"
 
     anchor = (
         f'<div id="kda-anchor" '
         f'data-size="{size}" data-grid="{grid}" '
         f'data-sw="{sw}" data-sc="{sc}" '
-        f'data-gc="{gc}" data-bg="{bg}"></div>'
+        f'data-gc="{gc}" data-bg="{bg}" '
+        f'data-persist="{persist}"></div>'
     )
     return (
         f"{MARKER_START}\n"
