@@ -68,6 +68,8 @@ _CANVAS_JS = r"""(function () {
       try { strokes = JSON.parse(sessionStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
     }
     try { sessionStorage.setItem(_SS_PHASE, 'back'); } catch(e) {}
+    // Lock is OFF → phase was advanced, but don't render anything on the back
+    if (!PERSIST) { return; }
   } else {
     // New card front — always start with a blank canvas
     try { sessionStorage.removeItem(_SS_KEY); sessionStorage.setItem(_SS_PHASE, 'front'); } catch(e) {}
