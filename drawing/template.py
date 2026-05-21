@@ -21,12 +21,17 @@ _CANVAS_JS = r"""(function () {
   var GRID_ICONS = ['田', '米', '✕'];
   var gi = Math.max(0, GRIDS.indexOf(d.grid || 'tian'));
 
-  var PERSIST = (d.persist !== '0');   // true unless explicitly disabled
+  // localStorage lets the user's preference survive across cards and sessions.
+  // Falls back to the value baked in at injection time (from addon config).
+  var _LS_KEY = 'kda_persist';
+  var _lsVal;
+  try { _lsVal = localStorage.getItem(_LS_KEY); } catch(e) { _lsVal = null; }
+  var PERSIST = (_lsVal !== null) ? (_lsVal === '1') : (d.persist !== '0');
 
   var LABELS = {
-    en: { clear: 'Clear', undo: 'Undo', strokes: 'Strokes' },
-    es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos' },
-    ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数' }
+    en: { clear: 'Clear', undo: 'Undo', strokes: 'Strokes', keepOn: 'Keep ✓', keepOff: 'Keep ✗' },
+    es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos', keepOn: 'Guardar ✓', keepOff: 'Guardar ✗' },
+    ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数', keepOn: '保持 ✓', keepOff: '保持 ✗' }
   };
   var lc = (navigator.language || 'en').slice(0, 2);
   var L  = LABELS[lc] || LABELS['en'];
@@ -83,6 +88,8 @@ _CANVAS_JS = r"""(function () {
       '.night_mode #kda-wrap button,.nightMode #kda-wrap button{',
         'background:#3a3a3a!important;color:#ddd!important;border-color:#666!important}',
       '.night_mode #kda-ctr,.nightMode #kda-ctr{color:#aaa!important}',
+      '#kda-keep-on{background:#d4edda!important;border-color:#5cb85c!important;color:#155724!important}',
+      '.night_mode #kda-keep-on,.nightMode #kda-keep-on{background:#1e3a22!important;border-color:#5cb85c!important;color:#8fd49a!important}',
     ].join('');
     document.head.appendChild(css);
   }
@@ -112,12 +119,21 @@ _CANVAS_JS = r"""(function () {
     gridBtn.textContent = GRID_ICONS[gi];
     redraw();
   });
+  var keepBtn = mkBtn(PERSIST ? L.keepOn : L.keepOff, function () {
+    PERSIST = !PERSIST;
+    try { localStorage.setItem(_LS_KEY, PERSIST ? '1' : '0'); } catch(e) {}
+    keepBtn.textContent = PERSIST ? L.keepOn : L.keepOff;
+    keepBtn.id = PERSIST ? 'kda-keep-on' : '';
+  });
+  keepBtn.id = PERSIST ? 'kda-keep-on' : '';
+
   var ctr = document.createElement('span');
   ctr.id = 'kda-ctr';
 
   bar.appendChild(clrBtn);
   bar.appendChild(undBtn);
   bar.appendChild(gridBtn);
+  bar.appendChild(keepBtn);
   bar.appendChild(ctr);
   outer.appendChild(cvs);
   wrap.appendChild(outer);
