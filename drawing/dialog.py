@@ -116,6 +116,10 @@ class DrawingCanvasDialog(QDialog):
         pkg = __name__.split(".")[0]
         cfg = mw.addonManager.getConfig(pkg) or {}
         tmpl["qfmt"] = inject(tmpl["qfmt"], cfg)
+        # Inject into the back template too when it doesn't embed {{FrontSide}}.
+        # Without this the canvas is absent from backs that define their own layout.
+        if "{{FrontSide}}" not in tmpl["afmt"] and not has_canvas(tmpl["afmt"]):
+            tmpl["afmt"] = inject(tmpl["afmt"], cfg)
         mw.col.models.save(model)
         tooltip(self._s["added_ok"])
         self._refresh_templates(self.nt_combo.currentIndex())
@@ -133,6 +137,7 @@ class DrawingCanvasDialog(QDialog):
         if not askUser(msg):
             return
         tmpl["qfmt"] = remove(tmpl["qfmt"])
+        tmpl["afmt"] = remove(tmpl["afmt"])   # safe no-op if not present
         mw.col.models.save(model)
         tooltip(self._s["removed_ok"])
         self._refresh_templates(self.nt_combo.currentIndex())
