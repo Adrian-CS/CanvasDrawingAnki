@@ -31,9 +31,9 @@ _CANVAS_JS = r"""(function () {
   // Language baked in at injection time from Anki's locale; falls back to
   // browser locale so cards synced to other devices still pick a language.
   var LABELS = {
-    en: { clear: 'Clear', undo: 'Undo', strokes: 'Strokes' },
-    es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos' },
-    ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数' }
+    en: { clear: 'Clear', undo: 'Undo', strokes: 'Strokes', yourWriting: '✎ Your writing' },
+    es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos', yourWriting: '✎ Tu escritura' },
+    ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数', yourWriting: '✎ あなたの字' }
   };
   var lc = d.lang || (navigator.language || 'en').slice(0, 2);
   var L  = LABELS[lc] || LABELS['en'];
@@ -95,11 +95,16 @@ _CANVAS_JS = r"""(function () {
       '.night_mode #kda-ctr,.nightMode #kda-ctr{color:#aaa!important}',
       '#kda-keep-on{background:#d4edda!important;border-color:#5cb85c!important;color:#155724!important}',
       '.night_mode #kda-keep-on,.nightMode #kda-keep-on{background:#1e3a22!important;border-color:#5cb85c!important;color:#8fd49a!important}',
-      /* Back-side compact mode: half size, float left, no pointer events */
-      '#kda-wrap.kda-back{float:left!important;margin:0 16px 16px 0!important;clear:left!important}',
-      '#kda-wrap.kda-back #kda-outer{width:min(100%,' + Math.round(SZ * 0.45) + 'px)!important}',
-      '#kda-wrap.kda-back #kda-canvas{pointer-events:none!important;cursor:default!important;opacity:.9!important}',
+      /* Back-side compact mode inside <details> — never covers other content */
+      '#kda-wrap.kda-back{margin:8px auto!important}',
+      '#kda-wrap.kda-back #kda-outer{width:min(100%,' + Math.round(SZ * 0.5) + 'px)!important}',
+      '#kda-wrap.kda-back #kda-canvas{pointer-events:none!important;cursor:default!important}',
       '#kda-wrap.kda-back #kda-bar{margin-top:4px!important}',
+      '#kda-details{display:block!important;margin:12px 0 4px!important}',
+      '#kda-summary{cursor:pointer!important;font-size:13px!important;color:#888!important;',
+        '-webkit-user-select:none!important;user-select:none!important;list-style:none!important}',
+      '#kda-summary::-webkit-details-marker{display:none!important}',
+      '.night_mode #kda-summary,.nightMode #kda-summary{color:#aaa!important}',
     ].join('');
     document.head.appendChild(css);
   }
@@ -149,15 +154,26 @@ _CANVAS_JS = r"""(function () {
   outer.appendChild(cvs);
   wrap.appendChild(outer);
   wrap.appendChild(bar);
-  a.insertAdjacentElement('afterend', wrap);
 
   if (IS_BACK) {
     wrap.classList.add('kda-back');
-    // On the back, only show the stroke count — no editing controls
+    // Hide editing controls — back is read-only compare view
     clrBtn.style.display  = 'none';
     undBtn.style.display  = 'none';
     gridBtn.style.display = 'none';
     keepBtn.style.display = 'none';
+    // Wrap in <details> so it never overlaps card content regardless of layout.
+    // Opens automatically when there is something to compare.
+    var det = document.createElement('details');
+    det.id = 'kda-details';
+    if (strokes.length > 0) { det.open = true; }
+    var sum = document.createElement('summary');
+    sum.id = 'kda-summary';
+    det.appendChild(sum);
+    det.appendChild(wrap);
+    a.insertAdjacentElement('afterend', det);
+  } else {
+    a.insertAdjacentElement('afterend', wrap);
   }
 
   /* ── Drawing ─────────────────────────────────────────────────────── */
@@ -202,6 +218,10 @@ _CANVAS_JS = r"""(function () {
     clrBtn.disabled = !strokes.length;
     if (PERSIST) {
       try { sessionStorage.setItem(_SS_KEY, JSON.stringify(strokes)); } catch(e) {}
+    }
+    var sum = document.getElementById('kda-summary');
+    if (sum) {
+      sum.textContent = L.yourWriting + (strokes.length ? ' (' + strokes.length + ')' : '');
     }
   }
 
