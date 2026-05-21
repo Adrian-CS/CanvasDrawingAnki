@@ -54,15 +54,22 @@ _CANVAS_JS = r"""(function () {
 
   var strokes = [], cur = [], dn = false;
 
-  // IS_BACK: true when rendering the answer side after a flip
-  var IS_BACK = PERSIST && (_phase === 'front');
+  /* ── Phase tracking (independent of PERSIST) ────────────────────────
+     IS_BACK is determined solely by whether the front script already ran
+     this card (_phase === 'front'), NOT by the PERSIST flag.
+     Mixing them caused a bug: toggling the lock OFF made the back script
+     fall into the "new card front" branch, writing _SS_PHASE='front' and
+     corrupting the phase for the next card. ─────────────────────────── */
+  var IS_BACK = (_phase === 'front');
 
   if (IS_BACK) {
-    // Back side of the same card – restore what was drawn on the front
-    try { strokes = JSON.parse(sessionStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
+    // Answer side of the same card — advance phase regardless of PERSIST
+    if (PERSIST) {
+      try { strokes = JSON.parse(sessionStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
+    }
     try { sessionStorage.setItem(_SS_PHASE, 'back'); } catch(e) {}
   } else {
-    // New card front – always start with a blank canvas
+    // New card front — always start with a blank canvas
     try { sessionStorage.removeItem(_SS_KEY); sessionStorage.setItem(_SS_PHASE, 'front'); } catch(e) {}
   }
 
