@@ -54,7 +54,10 @@ _CANVAS_JS = r"""(function () {
 
   var strokes = [], cur = [], dn = false;
 
-  if (PERSIST && _phase === 'front') {
+  // IS_BACK: true when rendering the answer side after a flip
+  var IS_BACK = PERSIST && (_phase === 'front');
+
+  if (IS_BACK) {
     // Back side of the same card – restore what was drawn on the front
     try { strokes = JSON.parse(sessionStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
     try { sessionStorage.setItem(_SS_PHASE, 'back'); } catch(e) {}
@@ -92,6 +95,11 @@ _CANVAS_JS = r"""(function () {
       '.night_mode #kda-ctr,.nightMode #kda-ctr{color:#aaa!important}',
       '#kda-keep-on{background:#d4edda!important;border-color:#5cb85c!important;color:#155724!important}',
       '.night_mode #kda-keep-on,.nightMode #kda-keep-on{background:#1e3a22!important;border-color:#5cb85c!important;color:#8fd49a!important}',
+      /* Back-side compact mode: half size, float left, no pointer events */
+      '#kda-wrap.kda-back{float:left!important;margin:0 16px 16px 0!important;clear:left!important}',
+      '#kda-wrap.kda-back #kda-outer{width:min(100%,' + Math.round(SZ * 0.45) + 'px)!important}',
+      '#kda-wrap.kda-back #kda-canvas{pointer-events:none!important;cursor:default!important;opacity:.9!important}',
+      '#kda-wrap.kda-back #kda-bar{margin-top:4px!important}',
     ].join('');
     document.head.appendChild(css);
   }
@@ -142,6 +150,15 @@ _CANVAS_JS = r"""(function () {
   wrap.appendChild(outer);
   wrap.appendChild(bar);
   a.insertAdjacentElement('afterend', wrap);
+
+  if (IS_BACK) {
+    wrap.classList.add('kda-back');
+    // On the back, only show the stroke count — no editing controls
+    clrBtn.style.display  = 'none';
+    undBtn.style.display  = 'none';
+    gridBtn.style.display = 'none';
+    keepBtn.style.display = 'none';
+  }
 
   /* ── Drawing ─────────────────────────────────────────────────────── */
   var ctx = cvs.getContext('2d');
