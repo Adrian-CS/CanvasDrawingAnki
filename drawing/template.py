@@ -80,20 +80,29 @@ _CANVAS_JS = r"""(function () {
     var css = document.createElement('style');
     css.id = 'kda-style';
     css.textContent = [
-      '#kda-wrap{margin:16px auto;-webkit-user-select:none;user-select:none}',
+      /* touch-action:manipulation on the whole wrap prevents double-tap zoom
+         everywhere inside it; canvas overrides to none for drawing. */
+      '#kda-wrap{margin:16px auto;-webkit-user-select:none;user-select:none;',
+        'touch-action:manipulation!important}',
       '#kda-outer{width:min(100%,' + SZ + 'px);margin:0 auto}',
-      /* aspect-ratio keeps the canvas square when CSS scales width */
       '#kda-canvas{display:block!important;width:100%!important;aspect-ratio:1/1!important;',
-        'border:2px solid #888!important;border-radius:6px!important;',
-        'cursor:crosshair!important;touch-action:none!important}',
+        'border:2px solid #888!important;border-radius:6px!important;cursor:crosshair!important;',
+        /* none: disables ALL gestures (scroll, zoom, swipe) on the canvas */
+        'touch-action:none!important;',
+        /* suppress iOS long-press callout and text-selection highlight */
+        '-webkit-touch-callout:none!important;-webkit-tap-highlight-color:transparent!important}',
       '#kda-bar{display:flex!important;justify-content:center!important;',
         'align-items:center!important;flex-wrap:wrap!important;',
         'gap:6px!important;margin-top:8px!important}',
       '#kda-wrap button{',
         'padding:5px 14px!important;font-size:14px!important;line-height:1.4!important;',
         'border-radius:4px!important;border:1px solid #999!important;',
-        'background:#f0f0f0!important;color:#333!important;',
-        'cursor:pointer!important;box-shadow:none!important}',
+        'background:#f0f0f0!important;color:#333!important;cursor:pointer!important;',
+        'box-shadow:none!important;',
+        /* manipulation: removes 300ms tap delay + double-tap zoom on buttons */
+        'touch-action:manipulation!important;',
+        /* no blue highlight flash on tap, no long-press callout */
+        '-webkit-tap-highlight-color:transparent!important;-webkit-touch-callout:none!important}',
       '#kda-wrap button:disabled{opacity:.4!important;cursor:default!important}',
       '#kda-ctr{font-size:13px!important;color:#666!important;',
         'min-width:56px!important;display:inline-block!important}',
@@ -271,11 +280,13 @@ _CANVAS_JS = r"""(function () {
      that originates inside the canvas. ─────────────────────────────── */
   var _tp = { passive: false };
   function _eat(e) { e.preventDefault(); e.stopPropagation(); }
-  cvs.addEventListener('touchstart',  _eat, _tp);
-  cvs.addEventListener('touchmove',   _eat, _tp);
-  cvs.addEventListener('touchend',    _eat, _tp);
-  cvs.addEventListener('touchcancel', _eat, _tp);
-  cvs.addEventListener('click',       _eat);
+  cvs.addEventListener('touchstart',   _eat, _tp);
+  cvs.addEventListener('touchmove',    _eat, _tp);
+  cvs.addEventListener('touchend',     _eat, _tp);
+  cvs.addEventListener('touchcancel',  _eat, _tp);
+  cvs.addEventListener('click',        _eat);
+  // Prevent long-press context menu (Save Image / Copy) on the canvas
+  cvs.addEventListener('contextmenu',  _eat);
 
   redraw(); tick();
 }());"""
