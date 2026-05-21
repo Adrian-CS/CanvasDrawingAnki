@@ -28,12 +28,14 @@ _CANVAS_JS = r"""(function () {
   try { _lsVal = localStorage.getItem(_LS_KEY); } catch(e) { _lsVal = null; }
   var PERSIST = (_lsVal !== null) ? (_lsVal === '1') : (d.persist !== '0');
 
+  // Language baked in at injection time from Anki's locale; falls back to
+  // browser locale so cards synced to other devices still pick a language.
   var LABELS = {
-    en: { clear: 'Clear', undo: 'Undo', strokes: 'Strokes', keepOn: 'Keep ✓', keepOff: 'Keep ✗' },
-    es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos', keepOn: 'Guardar ✓', keepOff: 'Guardar ✗' },
-    ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数', keepOn: '保持 ✓', keepOff: '保持 ✗' }
+    en: { clear: 'Clear', undo: 'Undo', strokes: 'Strokes' },
+    es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos' },
+    ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数' }
   };
-  var lc = (navigator.language || 'en').slice(0, 2);
+  var lc = d.lang || (navigator.language || 'en').slice(0, 2);
   var L  = LABELS[lc] || LABELS['en'];
 
   /* ── Phase-based persistence ─────────────────────────────────────────
@@ -119,13 +121,14 @@ _CANVAS_JS = r"""(function () {
     gridBtn.textContent = GRID_ICONS[gi];
     redraw();
   });
-  var keepBtn = mkBtn(PERSIST ? L.keepOn : L.keepOff, function () {
+  var keepBtn = mkBtn(PERSIST ? '🔒' : '🔓', function () {
     PERSIST = !PERSIST;
     try { localStorage.setItem(_LS_KEY, PERSIST ? '1' : '0'); } catch(e) {}
-    keepBtn.textContent = PERSIST ? L.keepOn : L.keepOff;
+    keepBtn.textContent = PERSIST ? '🔒' : '🔓';
     keepBtn.id = PERSIST ? 'kda-keep-on' : '';
   });
   keepBtn.id = PERSIST ? 'kda-keep-on' : '';
+  keepBtn.title = 'Keep drawing on flip';
 
   var ctr = document.createElement('span');
   ctr.id = 'kda-ctr';
@@ -234,6 +237,8 @@ _CANVAS_JS = r"""(function () {
 
 def build_block(cfg: dict) -> str:
     """Return the full HTML block to inject into a card template."""
+    from .i18n import _detect_lang
+
     size    = cfg.get("canvas_size", 300)
     grid    = cfg.get("grid_type", "tian")
     sw      = cfg.get("stroke_width", 3)
@@ -241,13 +246,14 @@ def build_block(cfg: dict) -> str:
     gc      = cfg.get("grid_color", "#aaaaaa")
     bg      = cfg.get("background_color", "#ffffff")
     persist = "1" if cfg.get("persist_drawing", True) else "0"
+    lang    = _detect_lang()
 
     anchor = (
         f'<div id="kda-anchor" '
         f'data-size="{size}" data-grid="{grid}" '
         f'data-sw="{sw}" data-sc="{sc}" '
         f'data-gc="{gc}" data-bg="{bg}" '
-        f'data-persist="{persist}"></div>'
+        f'data-persist="{persist}" data-lang="{lang}"></div>'
     )
     return (
         f"{MARKER_START}\n"
