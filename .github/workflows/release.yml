@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build .ankiaddon
+        run: |
+          zip -r kanjiDrawingAnki.ankiaddon \
+            __init__.py manifest.json config.json config.md \
+            drawing/__init__.py drawing/dialog.py drawing/i18n.py drawing/template.py
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: kanjiDrawingAnki.ankiaddon
+          generate_release_notes: true
