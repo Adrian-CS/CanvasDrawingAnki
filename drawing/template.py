@@ -28,51 +28,71 @@ _CANVAS_JS = r"""(function () {
   try { _lsVal = localStorage.getItem(_LS_KEY); } catch(e) { _lsVal = null; }
   var PERSIST = (_lsVal !== null) ? (_lsVal === '1') : (d.persist !== '0');
 
+  // Same idea, for whether Undo / exiting-and-re-entering the deck restores
+  // the front-side drawing as-is (true) or always starts it blank (false).
+  var _LS_KEY_RESTORE = 'kda_restore_undo';
+  var _lsRestoreVal;
+  try { _lsRestoreVal = localStorage.getItem(_LS_KEY_RESTORE); } catch(e) { _lsRestoreVal = null; }
+  var RESTORE = (_lsRestoreVal !== null) ? (_lsRestoreVal === '1') : (d.restore !== '0');
+
   // Language baked in at injection time from Anki's locale; falls back to
   // browser locale so cards synced to other devices still pick a language.
   var LABELS = {
-    en: { clear: 'Clear', undo: 'Undo', strokes: 'Strokes', yourWriting: '✎ Your writing' },
-    es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos', yourWriting: '✎ Tu escritura' },
-    ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数', yourWriting: '✎ あなたの字' }
+    en: { clear: 'Clear', undo: 'Undo', strokes: 'Strokes', yourWriting: '✎ Your writing',
+          keep: 'Keep', fresh: 'Fresh' },
+    es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos', yourWriting: '✎ Tu escritura',
+          keep: 'Mantener', fresh: 'Nuevo' },
+    ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数', yourWriting: '✎ あなたの字',
+          keep: '保持', fresh: '新規' }
   };
   var lc = d.lang || (navigator.language || 'en').slice(0, 2);
   var L  = LABELS[lc] || LABELS['en'];
 
-  /* ── Phase-based persistence ─────────────────────────────────────────
-     sessionStorage survives a card flip (front→back within the same
-     WebView session) but is cleared when Anki moves to a new card
-     and reloads the page.  We track a 'kda_phase' key so the script
-     can tell the difference between:
-       • "front of a new card"  → phase is absent or 'back'  → start clean
-       • "back after a flip"    → phase is 'front'           → restore strokes
-     After restoring, phase is set to 'back' so the NEXT run knows it
-     is a fresh card front again. ────────────────────────────────────── */
-  var _SS_KEY   = 'kda_strokes';
-  var _SS_PHASE = 'kda_phase';
-  var _phase;
-  try { _phase = sessionStorage.getItem(_SS_PHASE) || ''; } catch(e) { _phase = ''; }
+  /* ── Card-identity persistence ────────────────────────────────────────
+     window.__kdaCid / window.__kdaKind are set by a tiny <script> that
+     the add-on's card_will_show hook prepends to every render, carrying
+     the real card id and whether this is the question or answer side.
+     Using the actual card id — instead of a front/back flip-flop — lets
+     the script tell "the SAME card's front shown again" (undo, or
+     exiting/re-entering the deck mid-review) apart from "a genuinely new
+     card": a re-shown front looks identical to a new card's front to a
+     pure phase toggle, which is what used to wipe the drawing in both
+     of those cases.
+     localStorage (not sessionStorage) is used so this survives a full
+     WebView reload, which undo / deck re-entry can trigger. If the hook
+     didn't run for some reason, _cid is '' and every render falls back
+     to being treated as a new card, same as before this fix. ───────── */
+  var _SS_KEY  = 'kda_strokes';
+  var _CID_KEY = 'kda_cid';
+  var _cid = (typeof window.__kdaCid !== 'undefined' && window.__kdaCid !== null)
+    ? String(window.__kdaCid) : '';
+  var _kind = window.__kdaKind || '';
+  var _lastCid;
+  try { _lastCid = localStorage.getItem(_CID_KEY) || ''; } catch(e) { _lastCid = ''; }
+  var SAME_CARD = !!_cid && (_cid === _lastCid);
 
   var strokes = [], cur = [], dn = false;
 
-  /* ── Phase tracking (independent of PERSIST) ────────────────────────
-     IS_BACK is determined solely by whether the front script already ran
-     this card (_phase === 'front'), NOT by the PERSIST flag.
-     Mixing them caused a bug: toggling the lock OFF made the back script
-     fall into the "new card front" branch, writing _SS_PHASE='front' and
-     corrupting the phase for the next card. ─────────────────────────── */
-  var IS_BACK = (_phase === 'front');
+  var IS_BACK = /Answer/i.test(_kind);
 
   if (IS_BACK) {
-    // Answer side of the same card — advance phase regardless of PERSIST
-    if (PERSIST) {
-      try { strokes = JSON.parse(sessionStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
+    // Answer side — read back what was drawn on this card's front, if kept
+    if (PERSIST && SAME_CARD) {
+      try { strokes = JSON.parse(localStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
     }
-    try { sessionStorage.setItem(_SS_PHASE, 'back'); } catch(e) {}
-    // Lock is OFF → phase was advanced, but don't render anything on the back
+    // Lock is OFF → don't render anything on the back
     if (!PERSIST) { return; }
   } else {
-    // New card front — always start with a blank canvas
-    try { sessionStorage.removeItem(_SS_KEY); sessionStorage.setItem(_SS_PHASE, 'front'); } catch(e) {}
+    if (RESTORE && SAME_CARD) {
+      // Same card's front shown again (undo / deck re-entry) and the user
+      // wants it restored — keep whatever was drawn instead of wiping it.
+      try { strokes = JSON.parse(localStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
+    } else {
+      // Genuinely a new card, or the user prefers a fresh canvas whenever
+      // the front is shown again — start blank.
+      try { localStorage.removeItem(_SS_KEY); } catch(e) {}
+    }
+    try { if (_cid) { localStorage.setItem(_CID_KEY, _cid); } } catch(e) {}
   }
 
   /* ── Inject styles once so !important wins over Anki card themes ── */
@@ -104,6 +124,15 @@ _CANVAS_JS = r"""(function () {
         /* no blue highlight flash on tap, no long-press callout */
         '-webkit-tap-highlight-color:transparent!important;-webkit-touch-callout:none!important}',
       '#kda-wrap button:disabled{opacity:.4!important;cursor:default!important}',
+      /* Clear/Undo are the buttons used on every stroke — bigger tap target */
+      '#kda-wrap button.kda-primary{',
+        'padding:8px 20px!important;font-size:16px!important;font-weight:600!important}',
+      /* Grid/lock/keep are set-once-and-forget — shrink them out of the way */
+      '#kda-wrap button.kda-settings{',
+        'padding:3px 9px!important;font-size:12px!important}',
+      '#kda-sep{width:1px!important;align-self:stretch!important;margin:2px 2px!important;',
+        'background:#ccc!important}',
+      '.night_mode #kda-sep,.nightMode #kda-sep{background:#555!important}',
       '#kda-ctr{font-size:13px!important;color:#666!important;',
         'min-width:56px!important;display:inline-block!important}',
       /* Dark-mode overrides (Anki adds .night_mode or .nightMode on body) */
@@ -111,8 +140,9 @@ _CANVAS_JS = r"""(function () {
       '.night_mode #kda-wrap button,.nightMode #kda-wrap button{',
         'background:#3a3a3a!important;color:#ddd!important;border-color:#666!important}',
       '.night_mode #kda-ctr,.nightMode #kda-ctr{color:#aaa!important}',
-      '#kda-keep-on{background:#d4edda!important;border-color:#5cb85c!important;color:#155724!important}',
-      '.night_mode #kda-keep-on,.nightMode #kda-keep-on{background:#1e3a22!important;border-color:#5cb85c!important;color:#8fd49a!important}',
+      '#kda-wrap button.kda-on{background:#d4edda!important;border-color:#5cb85c!important;color:#155724!important}',
+      '.night_mode #kda-wrap button.kda-on,.nightMode #kda-wrap button.kda-on{',
+        'background:#1e3a22!important;border-color:#5cb85c!important;color:#8fd49a!important}',
       /* Back-side compact mode inside <details> — never covers other content */
       '#kda-wrap.kda-back{margin:8px auto!important}',
       '#kda-wrap.kda-back #kda-outer{width:min(100%,' + Math.round(SZ * 0.5) + 'px)!important}',
@@ -143,32 +173,54 @@ _CANVAS_JS = r"""(function () {
     return b;
   }
 
+  // Clear/Undo fire on every stroke, so they get the "primary" (bigger) style
+  // and sit together, closest to the canvas. Grid/lock/keep are set-once
+  // preferences, so they're smaller and separated by a divider.
   var clrBtn  = mkBtn(L.clear, function () { strokes = []; redraw(); tick(); });
+  clrBtn.classList.add('kda-primary');
   var undBtn  = mkBtn(L.undo,  function () {
     if (strokes.length) { strokes.pop(); redraw(); tick(); }
   });
+  undBtn.classList.add('kda-primary');
   var gridBtn = mkBtn(GRID_ICONS[gi], function () {
     gi = (gi + 1) % GRIDS.length;
     gridBtn.textContent = GRID_ICONS[gi];
     redraw();
   });
+  gridBtn.classList.add('kda-settings');
   var keepBtn = mkBtn(PERSIST ? '🔒' : '🔓', function () {
     PERSIST = !PERSIST;
     try { localStorage.setItem(_LS_KEY, PERSIST ? '1' : '0'); } catch(e) {}
     keepBtn.textContent = PERSIST ? '🔒' : '🔓';
-    keepBtn.id = PERSIST ? 'kda-keep-on' : '';
+    keepBtn.classList.toggle('kda-on', PERSIST);
   });
-  keepBtn.id = PERSIST ? 'kda-keep-on' : '';
+  keepBtn.classList.add('kda-settings');
+  keepBtn.classList.toggle('kda-on', PERSIST);
   keepBtn.title = 'Keep drawing on flip';
+
+  var restBtn = mkBtn(RESTORE ? L.keep : L.fresh, function () {
+    RESTORE = !RESTORE;
+    try { localStorage.setItem(_LS_KEY_RESTORE, RESTORE ? '1' : '0'); } catch(e) {}
+    restBtn.textContent = RESTORE ? L.keep : L.fresh;
+    restBtn.classList.toggle('kda-on', RESTORE);
+  });
+  restBtn.classList.add('kda-settings');
+  restBtn.classList.toggle('kda-on', RESTORE);
+  restBtn.title = 'Keep drawing when this card’s front is shown again';
 
   var ctr = document.createElement('span');
   ctr.id = 'kda-ctr';
 
+  var sep = document.createElement('span');
+  sep.id = 'kda-sep';
+
   bar.appendChild(clrBtn);
   bar.appendChild(undBtn);
+  bar.appendChild(ctr);
+  bar.appendChild(sep);
   bar.appendChild(gridBtn);
   bar.appendChild(keepBtn);
-  bar.appendChild(ctr);
+  bar.appendChild(restBtn);
   outer.appendChild(cvs);
   wrap.appendChild(outer);
   wrap.appendChild(bar);
@@ -180,6 +232,8 @@ _CANVAS_JS = r"""(function () {
     undBtn.style.display  = 'none';
     gridBtn.style.display = 'none';
     keepBtn.style.display = 'none';
+    restBtn.style.display = 'none';
+    sep.style.display     = 'none';
     // Wrap in <details> so it never overlaps card content regardless of layout.
     // Opens automatically when there is something to compare.
     var det = document.createElement('details');
@@ -234,9 +288,10 @@ _CANVAS_JS = r"""(function () {
     ctr.textContent = strokes.length ? L.strokes + ': ' + strokes.length : '';
     undBtn.disabled = !strokes.length;
     clrBtn.disabled = !strokes.length;
-    if (PERSIST) {
-      try { sessionStorage.setItem(_SS_KEY, JSON.stringify(strokes)); } catch(e) {}
-    }
+    // Always saved (regardless of PERSIST) so this card's front can be
+    // recovered after undo / deck re-entry; PERSIST only gates whether
+    // the back side is allowed to read it back.
+    try { localStorage.setItem(_SS_KEY, JSON.stringify(strokes)); } catch(e) {}
     var sum = document.getElementById('kda-summary');
     if (sum) {
       sum.textContent = L.yourWriting + (strokes.length ? ' (' + strokes.length + ')' : '');
@@ -303,6 +358,7 @@ def build_block(cfg: dict) -> str:
     gc      = cfg.get("grid_color", "#aaaaaa")
     bg      = cfg.get("background_color", "#ffffff")
     persist = "1" if cfg.get("persist_drawing", True) else "0"
+    restore = "1" if cfg.get("restore_after_undo", True) else "0"
     lang    = _detect_lang()
 
     anchor = (
@@ -310,7 +366,8 @@ def build_block(cfg: dict) -> str:
         f'data-size="{size}" data-grid="{grid}" '
         f'data-sw="{sw}" data-sc="{sc}" '
         f'data-gc="{gc}" data-bg="{bg}" '
-        f'data-persist="{persist}" data-lang="{lang}"></div>'
+        f'data-persist="{persist}" data-restore="{restore}" '
+        f'data-lang="{lang}"></div>'
     )
     return (
         f"{MARKER_START}\n"
