@@ -40,6 +40,10 @@ Both settings can also be toggled live during review with the Keep / Fresh
 button next to the canvas, which overrides this default for the current
 device until changed again.
 
+This only restores drawings from within the last 4 hours, so "Keep" never
+brings back a stale drawing from a previous day when spaced repetition
+resurfaces the same card again later.
+
 Note: pressing Undo while still looking at a card's answer (before grading
 it) does not return you to its question — that's normal Anki behaviour
 (there is nothing to undo about a card you haven't graded yet), and this

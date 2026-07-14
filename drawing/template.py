@@ -101,6 +101,25 @@ _CANVAS_JS = r"""(function () {
     try { localStorage.setItem(_RECENT_KEY, JSON.stringify(recent)); } catch(e) {}
   }
 
+  /* Per-card storage is stamped with a timestamp and expires after a few
+     hours: "Keep" is meant for short interruptions within the SAME
+     review session (Undo after grading, exiting/re-entering the deck),
+     not for bringing back a drawing from a previous day when spaced
+     repetition resurfaces the same card weeks later — which a plain
+     content match can't tell apart on its own, since the card's content
+     hasn't changed either way. localStorage has no built-in expiry, so
+     this is tracked manually. */
+  var _MAX_AGE_MS = 4 * 60 * 60 * 1000;
+  function _readPerCard() {
+    var raw;
+    try { raw = JSON.parse(localStorage.getItem(_PERCARD_KEY) || 'null'); } catch(e) { raw = null; }
+    if (!raw || typeof raw.t !== 'number' || (Date.now() - raw.t) > _MAX_AGE_MS) { return []; }
+    return raw.s || [];
+  }
+  function _writePerCard(s) {
+    try { localStorage.setItem(_PERCARD_KEY, JSON.stringify({ t: Date.now(), s: s })); } catch(e) {}
+  }
+
   var strokes = [], cur = [], dn = false;
 
   /* ── Front vs. back detection ─────────────────────────────────────────
@@ -129,10 +148,10 @@ _CANVAS_JS = r"""(function () {
     if (!PERSIST) { return; }
   } else {
     if (RESTORE) {
-      // Whatever was last drawn for THIS exact card, if anything — still
-      // there even if other cards were shown in between (e.g. grading,
-      // then Undo bringing this one back).
-      try { strokes = JSON.parse(localStorage.getItem(_PERCARD_KEY) || '[]'); } catch(e) {}
+      // Whatever was last drawn for THIS exact card, if anything and if
+      // recent enough — still there even if other cards were shown in
+      // between (e.g. grading, then Undo bringing this one back).
+      strokes = _readPerCard();
     } else {
       // The user prefers a fresh canvas whenever the front is shown,
       // including a genuinely new card, which never had anything stored.
@@ -340,7 +359,7 @@ _CANVAS_JS = r"""(function () {
     // tick() only ever runs while drawing on the front (the back is
     // read-only), so both slots are only ever written from there.
     try { localStorage.setItem(_LAST_KEY, JSON.stringify(strokes)); } catch(e) {}
-    try { localStorage.setItem(_PERCARD_KEY, JSON.stringify(strokes)); } catch(e) {}
+    _writePerCard(strokes);
     var sum = document.getElementById('kda-summary');
     if (sum) {
       sum.textContent = L.yourWriting + (strokes.length ? ' (' + strokes.length + ')' : '');
