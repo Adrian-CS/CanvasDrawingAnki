@@ -51,15 +51,10 @@ _CANVAS_JS = r"""(function () {
   /* ── Card-identity fingerprint ────────────────────────────────────────
      AnkiMobile doesn't run this add-on's Python code at all, so there is
      no host-supplied card id available on every platform — this has to
-     work from pure client-side signals alone. Instead, hash the card's
-     own rendered content (everything before our injected block) as a
-     stand-in for "which card is this", and use IT as this card's own
-     storage key (kda_strokes_<hash>) instead of one shared "last card"
-     slot. A single shared slot gets overwritten the moment a DIFFERENT
-     card's front appears — which happens the instant you grade and move
-     on — so by the time Undo brings the earlier card back, its strokes
-     were already gone. Per-card keys can't be clobbered by another card
-     being shown in between. ─────────────────────────────────────────── */
+     work from pure client-side signals alone. Hash the card's own
+     rendered content (everything before our injected block) as a
+     stand-in for "which card is this": the same card always renders the
+     same content. ──────────────────────────────────────────────────── */
   function _fingerprint() {
     var src = document.body ? document.body.innerHTML : '';
     var idx = src.indexOf('id="kda-anchor"');
@@ -69,12 +64,28 @@ _CANVAS_JS = r"""(function () {
     return String(h);
   }
 
-  var _cid    = _fingerprint();
-  var _SS_KEY = 'kda_strokes_' + _cid;
+  var _cid = _fingerprint();
+
+  /* ── Two storage slots for two separate jobs ──────────────────────────
+     _LAST_KEY: the immediate front→back handoff within a single flip.
+     This is a direct, immediate sequence — no other card can appear in
+     between a front and flipping to its OWN back — so a single shared
+     slot is exactly as safe here as it always was; it doesn't need any
+     fingerprint matching (using the fingerprint for this too used to
+     intermittently break the handoff from the second card of a session
+     onward, likely from some subtle difference between a card's content
+     rendered standalone vs embedded into its own answer).
+     _PERCARD_KEY: keyed by fingerprint, for restoring a card's drawing
+     when its front is shown again after OTHER cards were shown in
+     between (Undo after grading, or exiting/re-entering the deck) —
+     exactly the case a single shared slot can't survive, since a
+     different card's front would have overwritten it. ───────────────── */
+  var _LAST_KEY    = 'kda_last_strokes';
+  var _PERCARD_KEY = 'kda_strokes_' + _cid;
 
   // Small LRU so localStorage doesn't grow without bound over a long
   // review session — only the most recently shown cards keep their
-  // stored strokes around.
+  // per-card stored strokes around.
   var _RECENT_KEY = 'kda_recent';
   var _MAX_RECENT = 30;
   function _touchRecent(fp) {
@@ -109,9 +120,10 @@ _CANVAS_JS = r"""(function () {
   var IS_BACK = !!document.getElementById('answer');
 
   if (IS_BACK) {
-    // Answer side of the same card — read back what was drawn on the front
+    // Answer side of the same card — read back what the front (of this
+    // same flip) just saved, regardless of any fingerprint matching.
     if (PERSIST) {
-      try { strokes = JSON.parse(localStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
+      try { strokes = JSON.parse(localStorage.getItem(_LAST_KEY) || '[]'); } catch(e) {}
     }
     // Lock is OFF → don't render anything on the back
     if (!PERSIST) { return; }
@@ -120,11 +132,11 @@ _CANVAS_JS = r"""(function () {
       // Whatever was last drawn for THIS exact card, if anything — still
       // there even if other cards were shown in between (e.g. grading,
       // then Undo bringing this one back).
-      try { strokes = JSON.parse(localStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
+      try { strokes = JSON.parse(localStorage.getItem(_PERCARD_KEY) || '[]'); } catch(e) {}
     } else {
       // The user prefers a fresh canvas whenever the front is shown,
       // including a genuinely new card, which never had anything stored.
-      try { localStorage.removeItem(_SS_KEY); } catch(e) {}
+      try { localStorage.removeItem(_PERCARD_KEY); } catch(e) {}
     }
     _touchRecent(_cid);
   }
@@ -322,10 +334,13 @@ _CANVAS_JS = r"""(function () {
     ctr.textContent = strokes.length ? L.strokes + ': ' + strokes.length : '';
     undBtn.disabled = !strokes.length;
     clrBtn.disabled = !strokes.length;
-    // Always saved (regardless of PERSIST) so this card's front can be
-    // recovered after undo / deck re-entry; PERSIST only gates whether
-    // the back side is allowed to read it back.
-    try { localStorage.setItem(_SS_KEY, JSON.stringify(strokes)); } catch(e) {}
+    // Always saved (regardless of PERSIST/RESTORE) — those only gate
+    // whether the back side or a later front redisplay are allowed to
+    // read these back, not whether drawing itself gets recorded.
+    // tick() only ever runs while drawing on the front (the back is
+    // read-only), so both slots are only ever written from there.
+    try { localStorage.setItem(_LAST_KEY, JSON.stringify(strokes)); } catch(e) {}
+    try { localStorage.setItem(_PERCARD_KEY, JSON.stringify(strokes)); } catch(e) {}
     var sum = document.getElementById('kda-summary');
     if (sum) {
       sum.textContent = L.yourWriting + (strokes.length ? ' (' + strokes.length + ')' : '');
