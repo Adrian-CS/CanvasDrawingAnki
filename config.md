@@ -44,3 +44,13 @@ Note: pressing Undo while still looking at a card's answer (before grading
 it) does not return you to its question — that's normal Anki behaviour
 (there is nothing to undo about a card you haven't graded yet), and this
 add-on has no control over which side Anki decides to display.
+
+"Same card" is detected from the card's own rendered content, not a
+card id, since AnkiMobile doesn't run this add-on's Python code — this
+works identically on desktop and mobile, but two cards with byte-for-byte
+identical front content would (harmlessly) be treated as the same card.
+
+The canvas tells the front and back apart by checking for Anki's default
+`<hr id=answer>` marker in the answer template. If your back template
+both skips `{{FrontSide}}` and has removed that marker, the canvas can't
+detect it and will behave like the front there too.

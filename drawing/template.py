@@ -48,51 +48,85 @@ _CANVAS_JS = r"""(function () {
   var lc = d.lang || (navigator.language || 'en').slice(0, 2);
   var L  = LABELS[lc] || LABELS['en'];
 
-  /* ── Card-identity persistence ────────────────────────────────────────
-     window.__kdaCid / window.__kdaKind are set by a tiny <script> that
-     the add-on's card_will_show hook prepends to every render, carrying
-     the real card id and whether this is the question or answer side.
-     Using the actual card id — instead of a front/back flip-flop — lets
-     the script tell "the SAME card's front shown again" (undo, or
-     exiting/re-entering the deck mid-review) apart from "a genuinely new
-     card": a re-shown front looks identical to a new card's front to a
-     pure phase toggle, which is what used to wipe the drawing in both
-     of those cases.
-     localStorage (not sessionStorage) is used so this survives a full
-     WebView reload, which undo / deck re-entry can trigger. If the hook
-     didn't run for some reason, _cid is '' and every render falls back
-     to being treated as a new card, same as before this fix. ───────── */
-  var _SS_KEY  = 'kda_strokes';
-  var _CID_KEY = 'kda_cid';
-  var _cid = (typeof window.__kdaCid !== 'undefined' && window.__kdaCid !== null)
-    ? String(window.__kdaCid) : '';
-  var _kind = window.__kdaKind || '';
-  var _lastCid;
-  try { _lastCid = localStorage.getItem(_CID_KEY) || ''; } catch(e) { _lastCid = ''; }
-  var SAME_CARD = !!_cid && (_cid === _lastCid);
+  /* ── Card-identity fingerprint ────────────────────────────────────────
+     AnkiMobile doesn't run this add-on's Python code at all, so there is
+     no host-supplied card id available on every platform — this has to
+     work from pure client-side signals alone. Instead, hash the card's
+     own rendered content (everything before our injected block) as a
+     stand-in for "which card is this", and use IT as this card's own
+     storage key (kda_strokes_<hash>) instead of one shared "last card"
+     slot. A single shared slot gets overwritten the moment a DIFFERENT
+     card's front appears — which happens the instant you grade and move
+     on — so by the time Undo brings the earlier card back, its strokes
+     were already gone. Per-card keys can't be clobbered by another card
+     being shown in between. ─────────────────────────────────────────── */
+  function _fingerprint() {
+    var src = document.body ? document.body.innerHTML : '';
+    var idx = src.indexOf('id="kda-anchor"');
+    if (idx !== -1) { src = src.slice(0, idx); }
+    var h = 0;
+    for (var i = 0; i < src.length; i++) { h = (h * 31 + src.charCodeAt(i)) | 0; }
+    return String(h);
+  }
+
+  var _cid    = _fingerprint();
+  var _SS_KEY = 'kda_strokes_' + _cid;
+
+  // Small LRU so localStorage doesn't grow without bound over a long
+  // review session — only the most recently shown cards keep their
+  // stored strokes around.
+  var _RECENT_KEY = 'kda_recent';
+  var _MAX_RECENT = 30;
+  function _touchRecent(fp) {
+    var recent = [];
+    try { recent = JSON.parse(localStorage.getItem(_RECENT_KEY) || '[]'); } catch(e) {}
+    var idx = recent.indexOf(fp);
+    if (idx !== -1) { recent.splice(idx, 1); }
+    recent.push(fp);
+    while (recent.length > _MAX_RECENT) {
+      var evicted = recent.shift();
+      try { localStorage.removeItem('kda_strokes_' + evicted); } catch(e) {}
+    }
+    try { localStorage.setItem(_RECENT_KEY, JSON.stringify(recent)); } catch(e) {}
+  }
 
   var strokes = [], cur = [], dn = false;
 
-  var IS_BACK = /Answer/i.test(_kind);
+  /* ── Front vs. back detection ─────────────────────────────────────────
+     A front/back flip-flop tracked in session storage can't tell "this
+     is the back" apart from "the SAME front shown again" (undo, or
+     exiting/re-entering the deck before flipping) — both look identical
+     to a 2-state toggle. This uses a structural signal instead: Anki's
+     own default answer template always has an hr with id "answer"
+     between the embedded front side and the Back field — checking for it
+     directly needs no session history. Custom templates that both drop
+     the front-side embed AND remove that hr are the one case this can't
+     detect; the canvas then just behaves like the front there.
+     NOTE: never spell out Anki's double-brace field-reference syntax in
+     this comment — Anki substitutes that pattern anywhere in the raw
+     template text, comments included, before the browser ever sees this
+     script. ──────────────────────────────────────────────────────────── */
+  var IS_BACK = !!document.getElementById('answer');
 
   if (IS_BACK) {
-    // Answer side — read back what was drawn on this card's front, if kept
-    if (PERSIST && SAME_CARD) {
+    // Answer side of the same card — read back what was drawn on the front
+    if (PERSIST) {
       try { strokes = JSON.parse(localStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
     }
     // Lock is OFF → don't render anything on the back
     if (!PERSIST) { return; }
   } else {
-    if (RESTORE && SAME_CARD) {
-      // Same card's front shown again (undo / deck re-entry) and the user
-      // wants it restored — keep whatever was drawn instead of wiping it.
+    if (RESTORE) {
+      // Whatever was last drawn for THIS exact card, if anything — still
+      // there even if other cards were shown in between (e.g. grading,
+      // then Undo bringing this one back).
       try { strokes = JSON.parse(localStorage.getItem(_SS_KEY) || '[]'); } catch(e) {}
     } else {
-      // Genuinely a new card, or the user prefers a fresh canvas whenever
-      // the front is shown again — start blank.
+      // The user prefers a fresh canvas whenever the front is shown,
+      // including a genuinely new card, which never had anything stored.
       try { localStorage.removeItem(_SS_KEY); } catch(e) {}
     }
-    try { if (_cid) { localStorage.setItem(_CID_KEY, _cid); } } catch(e) {}
+    _touchRecent(_cid);
   }
 
   /* ── Inject styles once so !important wins over Anki card themes ── */
