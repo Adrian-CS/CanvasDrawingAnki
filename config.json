@@ -6,5 +6,6 @@
     "grid_color": "#aaaaaa",
     "background_color": "#ffffff",
     "persist_drawing": true,
-    "restore_after_undo": true
+    "restore_after_undo": true,
+    "keep_window_seconds": 90
 }

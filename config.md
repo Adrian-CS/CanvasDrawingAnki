@@ -40,9 +40,20 @@ Both settings can also be toggled live during review with the Keep / Fresh
 button next to the canvas, which overrides this default for the current
 device until changed again.
 
-This only restores drawings from within the last 4 hours, so "Keep" never
-brings back a stale drawing from a previous day when spaced repetition
-resurfaces the same card again later.
+**`keep_window_seconds`** *(integer, default `90`)*
+How recently a card's front must have last been drawn on for `restore_after_undo` /
+Keep to bring that drawing back. Long enough to cover a quick Undo or
+exiting/re-entering the deck, short enough to exclude:
+- Anki's "Again" bringing the same card back for another attempt later in
+  the same session (its shortest learning step is about a minute), where
+  you want a blank canvas to redraw on, not your previous (wrong) attempt.
+- A previous day's drawing coming back when spaced repetition resurfaces
+  the same card again later.
+
+Raise this if you routinely step away for longer between exiting and
+re-entering the deck than you'd want the canvas to forget; lower it if
+your shortest learning/relearning step is less than 90 seconds and
+"Again" is still bringing old drawings back.
 
 Note: pressing Undo while still looking at a card's answer (before grading
 it) does not return you to its question — that's normal Anki behaviour

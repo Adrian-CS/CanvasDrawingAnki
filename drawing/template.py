@@ -101,15 +101,17 @@ _CANVAS_JS = r"""(function () {
     try { localStorage.setItem(_RECENT_KEY, JSON.stringify(recent)); } catch(e) {}
   }
 
-  /* Per-card storage is stamped with a timestamp and expires after a few
-     hours: "Keep" is meant for short interruptions within the SAME
-     review session (Undo after grading, exiting/re-entering the deck),
-     not for bringing back a drawing from a previous day when spaced
-     repetition resurfaces the same card weeks later — which a plain
-     content match can't tell apart on its own, since the card's content
-     hasn't changed either way. localStorage has no built-in expiry, so
-     this is tracked manually. */
-  var _MAX_AGE_MS = 4 * 60 * 60 * 1000;
+  /* Per-card storage is stamped with a timestamp and expires after a
+     short, configurable window: "Keep" is meant for short interruptions
+     within the SAME review session (Undo after grading, exiting/
+     re-entering the deck) — not for "Again" requeuing the card for
+     another attempt later in the same session (Anki's shortest learning
+     step is ~1 minute), and not for a previous day's drawing coming back
+     when spaced repetition resurfaces the same card later. A plain
+     content match can't tell any of these apart on its own, since the
+     card's content is identical every time; localStorage has no
+     built-in expiry either, so both are handled with this timestamp. */
+  var _MAX_AGE_MS = (parseInt(d.keepWindow, 10) || 90) * 1000;
   function _readPerCard() {
     var raw;
     try { raw = JSON.parse(localStorage.getItem(_PERCARD_KEY) || 'null'); } catch(e) { raw = null; }
@@ -427,6 +429,7 @@ def build_block(cfg: dict) -> str:
     bg      = cfg.get("background_color", "#ffffff")
     persist = "1" if cfg.get("persist_drawing", True) else "0"
     restore = "1" if cfg.get("restore_after_undo", True) else "0"
+    keep_window = cfg.get("keep_window_seconds", 90)
     lang    = _detect_lang()
 
     anchor = (
@@ -435,6 +438,7 @@ def build_block(cfg: dict) -> str:
         f'data-sw="{sw}" data-sc="{sc}" '
         f'data-gc="{gc}" data-bg="{bg}" '
         f'data-persist="{persist}" data-restore="{restore}" '
+        f'data-keep-window="{keep_window}" '
         f'data-lang="{lang}"></div>'
     )
     return (
