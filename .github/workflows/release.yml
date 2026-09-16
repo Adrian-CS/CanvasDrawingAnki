@@ -15,11 +15,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check stroke data is in sync with the generator
+        run: python tools/check_stroke_data.py
+
+      - name: Run tests
+        run: node tests/test_checking.js
+
       - name: Build .ankiaddon
         run: |
           zip -r kanjiDrawingAnki.ankiaddon \
             __init__.py manifest.json config.json config.md \
-            drawing/__init__.py drawing/dialog.py drawing/i18n.py drawing/template.py
+            drawing/__init__.py drawing/dialog.py drawing/i18n.py \
+            drawing/media.py drawing/template.py \
+            drawing/data/strokes.js.gz drawing/data/KANJIVG-LICENSE.txt
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

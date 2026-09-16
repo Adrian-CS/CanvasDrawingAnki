@@ -14,8 +14,9 @@ from aqt.qt import (
 )
 from aqt.utils import askUser, showInfo, tooltip
 
+from . import media
 from .i18n import get_strings
-from .template import has_canvas, inject, remove
+from .template import expected_field, has_canvas, inject, remove
 
 
 class DrawingCanvasDialog(QDialog):
@@ -50,6 +51,20 @@ class DrawingCanvasDialog(QDialog):
         self.tmpl_list.setMinimumHeight(120)
         root.addWidget(self.tmpl_list)
 
+        # Stroke-checking field. The canvas can compare what is drawn
+        # against the character a note field holds; picking that field here
+        # is what enables checking for the template being added.
+        chk_row = QHBoxLayout()
+        chk_row.addWidget(QLabel(s["check_field"]))
+        self.field_combo = QComboBox()
+        chk_row.addWidget(self.field_combo, 1)
+        root.addLayout(chk_row)
+
+        self.check_hint = QLabel(s["check_field_hint"])
+        self.check_hint.setWordWrap(True)
+        self.check_hint.setStyleSheet("color: gray; font-size: 11px;")
+        root.addWidget(self.check_hint)
+
         # Add / Remove buttons
         act_row = QHBoxLayout()
         self.add_btn = QPushButton(s["add_btn"])
@@ -78,6 +93,13 @@ class DrawingCanvasDialog(QDialog):
         if self._models:
             self._refresh_templates(0)
 
+    # Fields commonly holding the character itself, across the note types
+    # people actually use for this — checked in order, first hit wins.
+    _LIKELY_FIELDS = (
+        "kanji", "character", "char", "hanzi", "漢字", "字",
+        "expression", "word", "front",
+    )
+
     def _refresh_templates(self, idx: int) -> None:
         if idx < 0 or idx >= len(self._models):
             return
@@ -85,9 +107,34 @@ class DrawingCanvasDialog(QDialog):
         self.tmpl_list.clear()
         for tmpl in model["tmpls"]:
             active = has_canvas(tmpl["qfmt"])
-            item = QListWidgetItem(("✓  " if active else "      ") + tmpl["name"])
+            label = ("✓  " if active else "      ") + tmpl["name"]
+            field = expected_field(tmpl["qfmt"]) if active else ""
+            if field:
+                label += f"   ({self._s['check_on_field'].format(field=field)})"
+            item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, tmpl["name"])
             self.tmpl_list.addItem(item)
+        self._refresh_fields(model)
+
+    def _refresh_fields(self, model) -> None:
+        names = [f["name"] for f in model["flds"]]
+        self.field_combo.clear()
+        self.field_combo.addItem(self._s["check_field_none"], "")
+        for name in names:
+            self.field_combo.addItem(name, name)
+        # Pre-select an obvious candidate so the common case is one click,
+        # while leaving "no checking" as the outcome when nothing fits.
+        lowered = {n.lower(): n for n in names}
+        for guess in self._LIKELY_FIELDS:
+            if guess in lowered:
+                self.field_combo.setCurrentText(lowered[guess])
+                break
+        if not media.available():
+            # An add-on copy built without the data file can still draw;
+            # it just can't check, so don't offer a choice that won't work.
+            self.field_combo.setCurrentIndex(0)
+            self.field_combo.setEnabled(False)
+            self.check_hint.setText(self._s["check_no_data"])
 
     # ── Helpers ───────────────────────────────────────────────────────
 
@@ -115,11 +162,17 @@ class DrawingCanvasDialog(QDialog):
             return
         pkg = __name__.split(".")[0]
         cfg = mw.addonManager.getConfig(pkg) or {}
-        tmpl["qfmt"] = inject(tmpl["qfmt"], cfg)
+        field = self.field_combo.currentData() or ""
+        if field and not media.install(mw.col):
+            # Without the reference data the canvas would offer checking it
+            # cannot perform, so fall back to a plain canvas and say so.
+            showInfo(self._s["check_install_failed"])
+            field = ""
+        tmpl["qfmt"] = inject(tmpl["qfmt"], cfg, field)
         # Inject into the back template too when it doesn't embed {{FrontSide}}.
         # Without this the canvas is absent from backs that define their own layout.
         if "{{FrontSide}}" not in tmpl["afmt"] and not has_canvas(tmpl["afmt"]):
-            tmpl["afmt"] = inject(tmpl["afmt"], cfg)
+            tmpl["afmt"] = inject(tmpl["afmt"], cfg, field)
         mw.col.models.save(model)
         tooltip(self._s["added_ok"])
         self._refresh_templates(self.nt_combo.currentIndex())
@@ -139,5 +192,10 @@ class DrawingCanvasDialog(QDialog):
         tmpl["qfmt"] = remove(tmpl["qfmt"])
         tmpl["afmt"] = remove(tmpl["afmt"])   # safe no-op if not present
         mw.col.models.save(model)
+        # The reference data is half a megabyte of synced media; once the
+        # last template that could use it is gone, so is the reason to keep
+        # it in the collection.
+        if not media.any_template_checks(mw.col):
+            media.uninstall(mw.col)
         tooltip(self._s["removed_ok"])
         self._refresh_templates(self.nt_combo.currentIndex())
