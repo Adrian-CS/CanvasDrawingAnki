@@ -69,3 +69,57 @@ The canvas tells the front and back apart by checking for Anki's default
 `<hr id=answer>` marker in the answer template. If your back template
 both skips `{{FrontSide}}` and has removed that marker, the canvas can't
 detect it and will behave like the front there too.
+
+---
+
+## Stroke checking
+
+The canvas can compare what you write against the character the card is
+about — stroke by stroke, including order and direction. It needs a note
+field holding that character: pick it in **Tools → Drawing Canvas…** when
+adding the canvas to a template ("Check strokes against field"). Without a
+field chosen, none of the settings below have any effect and no extra
+button appears.
+
+Reference shapes come from KanjiVG, expanded into your collection's media
+folder as `_kda_strokes.js` the first time a template is wired to a field
+and removed again when the last one goes. It syncs to your phone like any
+other media file, which is what makes checking work on AnkiDroid and
+AnkiMobile, where add-ons do not run.
+
+**`check_strokes`** *(boolean, default `false`)*
+Whether checking starts out on. The ✓ button next to the canvas toggles it
+live and that choice, like Keep / Fresh, overrides this default on that
+device until changed again.
+
+**`check_mode`** *(string, default `"live"`)*
+- `"live"` — every stroke is judged the moment you lift the pen, and the
+  ones that went wrong turn red or amber as you write.
+- `"manual"` — nothing is judged until you press **Check**, so you can
+  write the whole character undisturbed. The expected shape of each wrong
+  stroke is then drawn over your writing as a dashed outline.
+
+Either way the answer side always shows the full verdict for what you
+wrote on the question side.
+
+**`check_tolerance`** *(number, default `1.0`)*
+Multiplies how far a stroke may sit from its reference shape before it
+counts as wrong. The default accepts writing that is half-size, in a
+corner, rotated by about five degrees or visibly shaky, while still
+telling apart characters as close as 未 and 末. Raise it (`1.3`) if your
+handwriting keeps being marked wrong; lower it (`0.8`) to be held to a
+stricter standard.
+
+Some limits are worth knowing about:
+
+- Only one character per card is checked — the first CJK character in the
+  chosen field. A field holding a whole word is checked against its first
+  character.
+- Stroke checking is shape matching, not recognition. It is good at
+  catching a wrong stroke order, a stroke drawn backwards, a missing
+  stroke and a genuinely different character; it cannot grade calligraphy,
+  and a character written very differently from the reference (heavily
+  slanted, or in a cursive style) may be marked wrong although a human
+  would read it fine.
+- Characters KanjiVG has no entry for — hangul, Latin, and the rarest
+  kanji — simply report that there is no reference; drawing still works.

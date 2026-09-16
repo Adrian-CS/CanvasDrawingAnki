@@ -7,5 +7,8 @@
     "background_color": "#ffffff",
     "persist_drawing": true,
     "restore_after_undo": true,
-    "keep_window_seconds": 90
+    "keep_window_seconds": 90,
+    "check_strokes": false,
+    "check_mode": "live",
+    "check_tolerance": 1.0
 }

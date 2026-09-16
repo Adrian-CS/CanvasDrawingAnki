@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from html import escape, unescape
 
 MARKER_START = "<!-- KANJI-DRAW-START -->"
 MARKER_END = "<!-- KANJI-DRAW-END -->"
@@ -39,14 +40,84 @@ _CANVAS_JS = r"""(function () {
   // browser locale so cards synced to other devices still pick a language.
   var LABELS = {
     en: { clear: 'Clear', undo: 'Undo', strokes: 'Strokes', yourWriting: '✎ Your writing',
-          keep: 'Keep', fresh: 'Fresh' },
+          keep: 'Keep', fresh: 'Fresh', check: 'Check',
+          checkOn: 'Check strokes against the expected character',
+          allRight: 'Correct — all {n} strokes',
+          score: '{ok} of {n} strokes correct',
+          missing: '{n} stroke(s) missing',
+          extra: '{n} stroke(s) too many',
+          eBad: 'stroke {i}: wrong stroke',
+          eLen: 'stroke {i}: wrong length',
+          eOrder: 'stroke {i}: out of order',
+          eRev: 'stroke {i}: drawn backwards',
+          okStroke: 'stroke {i} ✓',
+          more: 'and {n} more',
+          noData: 'Stroke data not found — see the add-on docs',
+          noChar: 'No reference for {c}' },
     es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos', yourWriting: '✎ Tu escritura',
-          keep: 'Mantener', fresh: 'Nuevo' },
+          keep: 'Mantener', fresh: 'Nuevo', check: 'Comprobar',
+          checkOn: 'Comprobar los trazos con el carácter esperado',
+          allRight: '¡Correcto! Los {n} trazos',
+          score: '{ok} de {n} trazos correctos',
+          missing: 'Faltan {n} trazo(s)',
+          extra: 'Sobran {n} trazo(s)',
+          eBad: 'trazo {i}: incorrecto',
+          eLen: 'trazo {i}: longitud incorrecta',
+          eOrder: 'trazo {i}: fuera de orden',
+          eRev: 'trazo {i}: dirección invertida',
+          okStroke: 'trazo {i} ✓',
+          more: 'y {n} más',
+          noData: 'No se encontraron los datos de trazos — consulta la documentación',
+          noChar: 'No hay referencia para {c}' },
     ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数', yourWriting: '✎ あなたの字',
-          keep: '保持', fresh: '新規' }
+          keep: '保持', fresh: '新規', check: '判定',
+          checkOn: '期待される文字と筆画を照合する',
+          allRight: '正解 — 全{n}画',
+          score: '{n}画中{ok}画が正しい',
+          missing: '{n}画不足',
+          extra: '{n}画多い',
+          eBad: '{i}画目: 誤り',
+          eLen: '{i}画目: 長さが違います',
+          eOrder: '{i}画目: 筆順が違います',
+          eRev: '{i}画目: 方向が逆です',
+          okStroke: '{i}画目 ✓',
+          more: 'ほか{n}件',
+          noData: '筆画データが見つかりません — アドオンの説明を参照',
+          noChar: '{c} の参照データがありません' }
   };
   var lc = d.lang || (navigator.language || 'en').slice(0, 2);
   var L  = LABELS[lc] || LABELS['en'];
+
+  function fmt(tpl, vals) {
+    return tpl.replace(/\{(\w+)\}/g, function (_, k) { return vals[k]; });
+  }
+
+  /* ── Stroke checking settings ─────────────────────────────────────────
+     Same pattern as the other preferences: the add-on config bakes in a
+     default at injection time, and a live toggle stored in localStorage
+     overrides it per device. Checking additionally needs two things the
+     toggle can't provide — a character to check against (from the field
+     picked in the add-on dialog) and the reference data file in the
+     collection's media folder — so it silently stays off without them. */
+  var _LS_KEY_CHECK = 'kda_check';
+  var _lsCheckVal;
+  try { _lsCheckVal = localStorage.getItem(_LS_KEY_CHECK); } catch(e) { _lsCheckVal = null; }
+  var CHECK = (_lsCheckVal !== null) ? (_lsCheckVal === '1') : (d.check === '1');
+  // 'live' judges each stroke as it is finished; 'manual' waits for the
+  // Check button so the whole character can be written undisturbed.
+  var CHECK_MODE = d.checkMode === 'manual' ? 'manual' : 'live';
+  // Multiplies every matching threshold — >1 is more forgiving.
+  var TOL = parseFloat(d.tol) || 1;
+
+  /* The character to check against, rendered into a hidden span inside the
+     anchor by the note field chosen in the dialog. Fields often hold more
+     than the character alone (readings, a whole word, stray markup), so
+     take the first CJK ideograph or kana found; the surrogate-pair branch
+     covers the rarer characters above the BMP. */
+  var CJK_RE = /[぀-ヿ㐀-䶿一-鿿豈-﫿]|[\ud840-\ud87f][\udc00-\udfff]/;
+  var _expEl  = document.getElementById('kda-expected');
+  var _expHit = _expEl ? (_expEl.textContent || '').match(CJK_RE) : null;
+  var TARGET  = _expHit ? _expHit[0] : '';
 
   /* ── Card-identity fingerprint ────────────────────────────────────────
      AnkiMobile doesn't run this add-on's Python code at all, so there is
@@ -202,6 +273,16 @@ _CANVAS_JS = r"""(function () {
       '.night_mode #kda-sep,.nightMode #kda-sep{background:#555!important}',
       '#kda-ctr{font-size:13px!important;color:#666!important;',
         'min-width:56px!important;display:inline-block!important}',
+      /* Verdict line: its own row under the button bar so a long message
+         never reflows the buttons. Hidden until there is something to say. */
+      '#kda-msg{display:none;font-size:13px!important;line-height:1.5!important;',
+        'text-align:center!important;margin-top:6px!important;padding:0 8px!important;',
+        'color:#666!important}',
+      '#kda-msg.kda-good{color:#2e7d32!important}',
+      '#kda-msg.kda-bad{color:#c62828!important}',
+      '.night_mode #kda-msg,.nightMode #kda-msg{color:#aaa!important}',
+      '.night_mode #kda-msg.kda-good,.nightMode #kda-msg.kda-good{color:#8fd49a!important}',
+      '.night_mode #kda-msg.kda-bad,.nightMode #kda-msg.kda-bad{color:#ef9a9a!important}',
       /* Dark-mode overrides (Anki adds .night_mode or .nightMode on body) */
       '.night_mode #kda-canvas,.nightMode #kda-canvas{border-color:#555!important}',
       '.night_mode #kda-wrap button,.nightMode #kda-wrap button{',
@@ -243,10 +324,15 @@ _CANVAS_JS = r"""(function () {
   // Clear/Undo fire on every stroke, so they get the "primary" (bigger) style
   // and sit together, closest to the canvas. Grid/lock/keep are set-once
   // preferences, so they're smaller and separated by a divider.
-  var clrBtn  = mkBtn(L.clear, function () { strokes = []; redraw(); tick(); });
+  var clrBtn  = mkBtn(L.clear, function () {
+    strokes = []; verdicts = []; ghosts = []; CHECKED = false;
+    say(''); redraw(); tick();
+  });
   clrBtn.classList.add('kda-primary');
   var undBtn  = mkBtn(L.undo,  function () {
-    if (strokes.length) { strokes.pop(); redraw(); tick(); }
+    if (!strokes.length) { return; }
+    strokes.pop(); verdicts.pop(); ghosts = [];
+    redraw(); tick();
   });
   undBtn.classList.add('kda-primary');
   var gridBtn = mkBtn(GRID_ICONS[gi], function () {
@@ -275,31 +361,70 @@ _CANVAS_JS = r"""(function () {
   restBtn.classList.toggle('kda-on', RESTORE);
   restBtn.title = 'Keep drawing when this card’s front is shown again';
 
+  /* Checking has two controls: a settings-sized on/off toggle, and — in
+     manual mode only — a primary Check button next to Clear/Undo. Both
+     stay out of the way entirely on templates with no character to check
+     against, so nothing new appears for people who don't use this. */
+  var chkBtn = mkBtn('✓', function () {
+    CHECK = !CHECK;
+    try { localStorage.setItem(_LS_KEY_CHECK, CHECK ? '1' : '0'); } catch(e) {}
+    chkBtn.classList.toggle('kda-on', CHECK);
+    syncCheckUI();
+    if (CHECK) {
+      withRefs(function (ok) { if (ok && strokes.length) { runCheck(CHECK_MODE === 'manual'); } });
+    } else {
+      verdicts = []; ghosts = []; CHECKED = false; say(''); redraw();
+    }
+  });
+  chkBtn.classList.add('kda-settings');
+  chkBtn.classList.toggle('kda-on', CHECK);
+  chkBtn.title = L.checkOn;
+
+  var goBtn = mkBtn(L.check, function () {
+    withRefs(function (ok) { if (ok) { runCheck(true); } });
+  });
+  goBtn.classList.add('kda-primary');
+
+  function syncCheckUI() {
+    var show = CHECK && CHECK_MODE === 'manual' && !!TARGET;
+    goBtn.style.display = show ? '' : 'none';
+  }
+
   var ctr = document.createElement('span');
   ctr.id = 'kda-ctr';
 
   var sep = document.createElement('span');
   sep.id = 'kda-sep';
 
+  var msg = document.createElement('div');
+  msg.id = 'kda-msg';
+
   bar.appendChild(clrBtn);
   bar.appendChild(undBtn);
+  bar.appendChild(goBtn);
   bar.appendChild(ctr);
   bar.appendChild(sep);
   bar.appendChild(gridBtn);
   bar.appendChild(keepBtn);
   bar.appendChild(restBtn);
+  bar.appendChild(chkBtn);
+  if (!TARGET) { chkBtn.style.display = 'none'; }
+  syncCheckUI();
   outer.appendChild(cvs);
   wrap.appendChild(outer);
   wrap.appendChild(bar);
+  wrap.appendChild(msg);
 
   if (IS_BACK) {
     wrap.classList.add('kda-back');
     // Hide editing controls — back is read-only compare view
     clrBtn.style.display  = 'none';
     undBtn.style.display  = 'none';
+    goBtn.style.display   = 'none';
     gridBtn.style.display = 'none';
     keepBtn.style.display = 'none';
     restBtn.style.display = 'none';
+    chkBtn.style.display  = 'none';
     sep.style.display     = 'none';
     // Wrap in <details> so it never overlaps card content regardless of layout.
     // Opens automatically when there is something to compare.
@@ -335,10 +460,10 @@ _CANVAS_JS = r"""(function () {
     ctx.restore();
   }
 
-  function paintStroke(pts) {
+  function paintStroke(pts, color) {
     if (pts.length < 2) { return; }
     ctx.save();
-    ctx.strokeStyle = SC; ctx.lineWidth = SW;
+    ctx.strokeStyle = color || SC; ctx.lineWidth = SW;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
     for (var i = 1; i < pts.length; i++) { ctx.lineTo(pts[i].x, pts[i].y); }
@@ -348,8 +473,343 @@ _CANVAS_JS = r"""(function () {
   function redraw() {
     ctx.clearRect(0, 0, SZ, SZ);
     ctx.fillStyle = BG; ctx.fillRect(0, 0, SZ, SZ);
-    drawGrid(); strokes.forEach(paintStroke);
+    drawGrid();
+    ghosts.forEach(paintGhost);
+    strokes.forEach(function (pts, i) {
+      paintStroke(pts, VERDICT_COLORS[verdicts[i]] || SC);
+    });
   }
+
+  /* ══ Stroke checking ═══════════════════════════════════════════════════
+     The reference data is KanjiVG's stroke paths, quantised to polylines
+     and shipped as one media file (see drawing/data/README.md for the
+     format). Everything below is pure client-side maths so it behaves the
+     same on desktop and on mobile, where none of this add-on's Python
+     runs at all. ─────────────────────────────────────────────────────── */
+
+  var A64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  var A64I = {};
+  for (var _k = 0; _k < A64.length; _k++) { A64I[A64.charAt(_k)] = _k; }
+
+  /* Loads the reference data file on demand — only once a card actually
+     has something to check. Anki re-runs this script per card, so the
+     queue below collapses concurrent requests and, on desktop (where the
+     page survives between cards), the parsed data is reused for the whole
+     session; on mobile the webview serves it from its HTTP cache. */
+  function withData(cb) {
+    if (window.KDA_STROKE_DATA) { cb(true); return; }
+    if (window.KDA_DATA_Q) { window.KDA_DATA_Q.push(cb); return; }
+    var q = window.KDA_DATA_Q = [cb];
+    var s = document.createElement('script');
+    s.src = '_kda_strokes.js';
+    function done() {
+      var ok = !!window.KDA_STROKE_DATA;
+      window.KDA_DATA_Q = null;
+      q.forEach(function (f) { f(ok); });
+    }
+    s.addEventListener('load', done);
+    s.addEventListener('error', done);
+    document.head.appendChild(s);
+  }
+
+  /* Look one character up in the data blob. It is a plain newline-delimited
+     string rather than an object so that loading it costs a string literal
+     instead of building 6700 objects on every card render; the stroke
+     payload is base64 characters only, so a CJK needle can never collide
+     with one. */
+  function refFor(ch) {
+    var blob = window.KDA_STROKE_DATA || '';
+    var at = blob.indexOf('\n' + ch + '|');
+    if (at === -1) { return null; }
+    var from = at + ch.length + 2;
+    var to   = blob.indexOf('\n', from);
+    return blob.slice(from, to === -1 ? blob.length : to).split(',').map(function (t) {
+      var pts = [];
+      for (var i = 0; i + 1 < t.length; i += 2) {
+        pts.push({ x: A64I[t.charAt(i)]     / 63 * SZ,
+                   y: A64I[t.charAt(i + 1)] / 63 * SZ });
+      }
+      return pts;
+    });
+  }
+
+  // Points per stroke used for comparison. Both the drawn stroke and the
+  // reference are resampled to this many evenly spaced points so they can
+  // be compared position by position.
+  var NRS = 16;
+
+  function resample(pts, n) {
+    if (pts.length < 2) {
+      var only = pts[0] || { x: 0, y: 0 }, flat = [];
+      while (flat.length < n) { flat.push(only); }
+      return flat;
+    }
+    var seg = [], total = 0;
+    for (var i = 1; i < pts.length; i++) {
+      var dx = pts[i].x - pts[i - 1].x, dy = pts[i].y - pts[i - 1].y;
+      var len = Math.sqrt(dx * dx + dy * dy);
+      seg.push(len); total += len;
+    }
+    if (total === 0) { return resample([pts[0]], n); }
+    var out = [pts[0]], step = total / (n - 1), walked = 0, si = 0, used = 0;
+    for (var k = 1; k < n - 1; k++) {
+      var want = k * step;
+      while (si < seg.length - 1 && walked + seg[si] < want) { walked += seg[si]; si++; }
+      used = seg[si] === 0 ? 0 : (want - walked) / seg[si];
+      out.push({ x: pts[si].x + (pts[si + 1].x - pts[si].x) * used,
+                 y: pts[si].y + (pts[si + 1].y - pts[si].y) * used });
+    }
+    out.push(pts[pts.length - 1]);
+    return out;
+  }
+
+  function meanDist(a, b) {
+    var sum = 0;
+    for (var i = 0; i < a.length; i++) {
+      var dx = a[i].x - b[i].x, dy = a[i].y - b[i].y;
+      sum += Math.sqrt(dx * dx + dy * dy);
+    }
+    return sum / a.length;
+  }
+
+  function bbox(list) {
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    list.forEach(function (pts) {
+      pts.forEach(function (p) {
+        if (p.x < x0) { x0 = p.x; } if (p.x > x1) { x1 = p.x; }
+        if (p.y < y0) { y0 = p.y; } if (p.y > y1) { y1 = p.y; }
+      });
+    });
+    return { x0: x0, y0: y0, x1: x1, y1: y1, w: x1 - x0, h: y1 - y0 };
+  }
+
+  var IDENTITY = { s: 1, dx: 0, dy: 0 };
+
+  /* People rarely fill the canvas the way a font fills its em box — most
+     write smaller, and often off-centre. Comparing raw coordinates would
+     then fail every stroke of an otherwise perfect character. So once
+     enough strokes have been matched to say something about the writing's
+     overall size and placement, fit a uniform scale + offset that maps the
+     reference onto where the user is actually writing. Guard rails keep a
+     wrong fit from rescuing a genuinely wrong character: at least three
+     matched strokes, a span wide enough to be meaningful, and a scale that
+     stays within sane bounds. */
+  function fitTransform(drawnList, refList) {
+    if (drawnList.length < 3) { return IDENTITY; }
+    var db = bbox(drawnList), rb = bbox(refList);
+    var span = Math.max(db.w, db.h), rspan = Math.max(rb.w, rb.h);
+    if (span < SZ * 0.2 || rspan < SZ * 0.2) { return IDENTITY; }
+    var s = span / rspan;
+    if (s < 0.45 || s > 2.0) { return IDENTITY; }
+    return { s: s,
+             dx: (db.x0 + db.x1) / 2 - (rb.x0 + rb.x1) / 2 * s,
+             dy: (db.y0 + db.y1) / 2 - (rb.y0 + rb.y1) / 2 * s };
+  }
+
+  function applyXf(pts, xf) {
+    if (xf === IDENTITY) { return pts; }
+    return pts.map(function (p) {
+      return { x: p.x * xf.s + xf.dx, y: p.y * xf.s + xf.dy };
+    });
+  }
+
+  function pathLength(pts) {
+    var total = 0;
+    for (var i = 1; i < pts.length; i++) {
+      var dx = pts[i].x - pts[i - 1].x, dy = pts[i].y - pts[i - 1].y;
+      total += Math.sqrt(dx * dx + dy * dy);
+    }
+    return total;
+  }
+
+  // Mean point distance, as a fraction of the canvas side, below which a
+  // stroke counts as the reference stroke. Deliberately generous: this is
+  // handwriting practice, not signature verification, and measurements on
+  // deliberately sloppy writing (strokes misplaced by up to 7% of the
+  // canvas, rotated by 5°, sheared) put it around here.
+  var MATCH_TH = 0.075;
+  /* Characters that differ only in how long one stroke is relative to
+     another — 未/末, 土/士, 刀/力 — sit inside that distance, because
+     averaging the difference over a whole stroke dilutes it. Comparing
+     stroke lengths directly catches those without having to tighten the
+     positional tolerance to where honest handwriting starts failing.
+     Short strokes are exempt: a dot's length is mostly noise. */
+  var LEN_RATIO = 1.5;
+  var LEN_MIN = 0.08;
+  // A stroke is only called "backwards" when reversing it fits clearly
+  // better — for near-symmetric strokes both directions score alike and
+  // calling those backwards would be noise.
+  var REV_RATIO = 0.6;
+
+  var VERDICT_COLORS = { bad: '#d9534f', order: '#e08e0b', rev: '#e08e0b' };
+  // How many individual mistakes the verdict line spells out before it
+  // just counts the rest.
+  var MAX_ERRS = 3;
+
+  /* Greedy sequential matching. Each drawn stroke is matched against the
+     best still-unclaimed reference stroke; comparing against the expected
+     one alone could not tell "wrong stroke" apart from "right stroke, drawn
+     too early", which is exactly the mistake stroke-order practice is for.
+     A stroke that matches nothing consumes the expected slot anyway so the
+     rest of the character still lines up. */
+  function evaluate(drawnList, refs, seed) {
+    var used = [], pairsD = [], pairsR = [], v = [], errs = [], refOf = [];
+    for (var i = 0; i < drawnList.length; i++) {
+      // A seed measured from the drawing as a whole beats anything derived
+      // from matches made so far, which would need the very alignment they
+      // are supposed to produce; without one, grow the fit from confirmed
+      // matches as they accumulate.
+      var xf = seed || fitTransform(pairsD, pairsR);
+      var expected = -1, best = null;
+      for (var j = 0; j < refs.length; j++) {
+        if (used[j]) { continue; }
+        if (expected === -1) { expected = j; }
+        var refPts = applyXf(refs[j], xf);
+        var ref = resample(refPts, NRS);
+        var mine = resample(drawnList[i], NRS);
+        var fwd = meanDist(mine, ref) / SZ;
+        var rev = meanDist(mine.slice().reverse(), ref) / SZ;
+        var score = Math.min(fwd, rev);
+        var lr = pathLength(refPts) / SZ, ld = pathLength(drawnList[i]) / SZ;
+        var badLen = Math.max(lr, ld) > LEN_MIN &&
+                     (ld > lr * LEN_RATIO || lr > ld * LEN_RATIO);
+        if (!best || score < best.score) {
+          best = { j: j, score: score, rev: rev < fwd * REV_RATIO,
+                   badLen: badLen };
+        }
+      }
+      if (!best || best.score > MATCH_TH * TOL) {
+        // Nothing this could be. Consume the slot it should have filled so
+        // the strokes after it are still judged against the right shapes.
+        v.push('bad');
+        errs.push(fmt(L.eBad, { i: i + 1 }));
+        refOf.push(expected);
+        if (expected !== -1) { used[expected] = true; }
+        continue;
+      }
+      // From here the stroke is at least *this* reference stroke, so pair
+      // them up whatever the verdict — a wrong-length or reversed stroke
+      // still tells the alignment where the writer is working, and letting
+      // it fall through to the branch above would push every stroke after
+      // it onto the wrong reference.
+      used[best.j] = true;
+      refOf.push(best.j);
+      pairsD.push(drawnList[i]);
+      pairsR.push(refs[best.j]);
+      if (best.badLen) {
+        v.push('bad');
+        errs.push(fmt(L.eLen, { i: i + 1 }));
+      } else if (best.j !== expected) {
+        v.push('order');
+        errs.push(fmt(L.eOrder, { i: i + 1 }));
+      } else if (best.rev) {
+        v.push('rev');
+        errs.push(fmt(L.eRev, { i: i + 1 }));
+      } else {
+        v.push('ok');
+      }
+    }
+    var xfFinal = fitTransform(pairsD, pairsR);
+    return { v: v, errs: errs, xf: xfFinal, refOf: refOf,
+             ok: v.filter(function (x) { return x === 'ok'; }).length };
+  }
+
+  function summarize(r, refs, drawnCount) {
+    var parts = [];
+    if (drawnCount < refs.length) {
+      parts.push(fmt(L.missing, { n: refs.length - drawnCount }));
+    } else if (drawnCount > refs.length) {
+      parts.push(fmt(L.extra, { n: drawnCount - refs.length }));
+    }
+    if (!parts.length && r.ok === refs.length) {
+      return { text: fmt(L.allRight, { n: refs.length }), good: true };
+    }
+    parts.push(fmt(L.score, { ok: r.ok, n: refs.length }));
+    // A badly missed 29-stroke kanji would otherwise produce a paragraph.
+    // The first few mistakes are the ones worth fixing anyway, and the
+    // strokes themselves stay marked on the canvas.
+    var shown = r.errs.slice(0, MAX_ERRS);
+    if (r.errs.length > MAX_ERRS) {
+      shown.push(fmt(L.more, { n: r.errs.length - MAX_ERRS }));
+    }
+    return { text: parts.concat(shown).join(' · '), good: false };
+  }
+
+  var verdicts = [], ghosts = [], REFS = null, CHECKED = false;
+
+  function paintGhost(pts) {
+    if (pts.length < 2) { return; }
+    ctx.save();
+    ctx.strokeStyle = '#e08e0b'; ctx.globalAlpha = 0.5;
+    ctx.lineWidth = SW; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+    for (var i = 1; i < pts.length; i++) { ctx.lineTo(pts[i].x, pts[i].y); }
+    ctx.stroke(); ctx.restore();
+  }
+
+  function say(text, good) {
+    msg.textContent = text;
+    msg.style.display = text ? 'block' : 'none';
+    msg.classList.toggle('kda-good', !!good && !!text);
+    msg.classList.toggle('kda-bad', !good && !!text);
+  }
+
+  /* Runs a full pass over everything drawn so far. Re-running from scratch
+     on every stroke (rather than judging only the newest one) keeps live
+     and on-demand checking in exact agreement, and lets an earlier verdict
+     be revised once later strokes reveal how big the writing really is.
+     `full` asks for the whole-character summary; live checking only reports
+     the newest stroke until the character is complete. */
+  function runCheck(full) {
+    if (!REFS || !strokes.length) { return; }
+    // Measure how big and where the writing is before judging any of it:
+    // the reference prefix of the same length is what a writer who is on
+    // track has produced, so their bounding boxes should coincide.
+    var seed = fitTransform(strokes, REFS.slice(0, Math.min(strokes.length, REFS.length)));
+    var r = evaluate(strokes, REFS, seed === IDENTITY ? null : seed);
+    // Once strokes are paired up, refit on the pairs alone — that drops any
+    // stroke that was never going to match out of the measurement.
+    if (r.xf !== IDENTITY && r.xf !== seed) { r = evaluate(strokes, REFS, r.xf); }
+    verdicts = r.v;
+    ghosts = [];
+    // Show the expected shape only for strokes that went wrong, and only
+    // when asked for the full verdict — a ghost after every slip during
+    // live practice turns into tracing rather than recall.
+    if (full) {
+      for (var i = 0; i < r.v.length; i++) {
+        var ri = r.refOf[i];
+        if (r.v[i] !== 'ok' && ri >= 0) { ghosts.push(applyXf(REFS[ri], r.xf)); }
+      }
+    }
+    CHECKED = true;
+    redraw();
+    var done = full || strokes.length >= REFS.length;
+    if (done) {
+      var s = summarize(r, REFS, strokes.length);
+      say(s.text, s.good);
+    } else {
+      var last = r.v[r.v.length - 1];
+      say(last === 'ok' ? fmt(L.okStroke, { i: r.v.length })
+                        : r.errs[r.errs.length - 1], last === 'ok');
+    }
+    return r;
+  }
+
+  // Pulls the reference in (loading the data file the first time) and then
+  // runs `after`. Keeps every caller free of the loading dance.
+  function withRefs(after) {
+    if (REFS) { after(true); return; }
+    if (!TARGET) { after(false); return; }
+    withData(function (ok) {
+      if (!ok) { say(L.noData, false); after(false); return; }
+      REFS = refFor(TARGET);
+      if (!REFS) { say(fmt(L.noChar, { c: TARGET }), false); after(false); return; }
+      after(true);
+    });
+  }
+
+  function checkingPossible() { return CHECK && !!TARGET; }
 
   function tick() {
     ctr.textContent = strokes.length ? L.strokes + ': ' + strokes.length : '';
@@ -365,6 +825,18 @@ _CANVAS_JS = r"""(function () {
     var sum = document.getElementById('kda-summary');
     if (sum) {
       sum.textContent = L.yourWriting + (strokes.length ? ' (' + strokes.length + ')' : '');
+    }
+  }
+
+  // Called when a stroke is finished. In live mode this judges the stroke
+  // right away; in manual mode it only refreshes an already-shown verdict,
+  // so drawing after checking doesn't leave a stale message on screen.
+  function afterStroke() {
+    if (!checkingPossible()) { return; }
+    if (CHECK_MODE === 'live') {
+      withRefs(function (ok) { if (ok) { runCheck(false); } });
+    } else if (CHECKED) {
+      say(''); ghosts = []; verdicts = []; CHECKED = false; redraw();
     }
   }
 
@@ -384,7 +856,7 @@ _CANVAS_JS = r"""(function () {
   function endStroke() {
     if (!dn) { return; } dn = false;
     if (cur.length > 1) { strokes.push(cur.slice()); }
-    cur = []; redraw(); tick();
+    cur = []; redraw(); tick(); afterStroke();
   }
   cvs.addEventListener('pointerup',     endStroke);
   cvs.addEventListener('pointercancel', endStroke);
@@ -414,11 +886,26 @@ _CANVAS_JS = r"""(function () {
   cvs.addEventListener('contextmenu',  _eat);
 
   redraw(); tick();
+
+  // A restored front drawing, or the back side showing what was written on
+  // the front, both arrive with strokes already in place — judge them right
+  // away instead of waiting for the next stroke that may never come. The
+  // back always gets the full verdict since it is the compare view.
+  if (checkingPossible() && strokes.length) {
+    withRefs(function (ok) {
+      if (ok) { runCheck(IS_BACK || CHECK_MODE === 'manual'); }
+    });
+  }
 }());"""
 
 
-def build_block(cfg: dict) -> str:
-    """Return the full HTML block to inject into a card template."""
+def build_block(cfg: dict, expected_field: str | None = None) -> str:
+    """Return the full HTML block to inject into a card template.
+
+    ``expected_field`` names the note field holding the character the
+    drawing should be checked against; without it the block still works,
+    it just never offers stroke checking.
+    """
     from .i18n import _detect_lang
 
     size    = cfg.get("canvas_size", 300)
@@ -430,7 +917,22 @@ def build_block(cfg: dict) -> str:
     persist = "1" if cfg.get("persist_drawing", True) else "0"
     restore = "1" if cfg.get("restore_after_undo", True) else "0"
     keep_window = cfg.get("keep_window_seconds", 90)
+    check   = "1" if cfg.get("check_strokes", False) else "0"
+    mode    = "manual" if cfg.get("check_mode") == "manual" else "live"
+    tol     = cfg.get("check_tolerance", 1.0)
     lang    = _detect_lang()
+
+    # The expected character rides along as the field's rendered text rather
+    # than as an attribute value: fields can contain quotes and markup, and
+    # a text node needs no escaping to survive either. Anki substitutes the
+    # field reference when the card is rendered, so this works unchanged on
+    # mobile, where none of this add-on's Python code runs.
+    expected = ""
+    if expected_field:
+        expected = (
+            f'<span id="kda-expected" style="display:none">'
+            f"{{{{text:{expected_field}}}}}</span>"
+        )
 
     anchor = (
         f'<div id="kda-anchor" '
@@ -439,7 +941,10 @@ def build_block(cfg: dict) -> str:
         f'data-gc="{gc}" data-bg="{bg}" '
         f'data-persist="{persist}" data-restore="{restore}" '
         f'data-keep-window="{keep_window}" '
-        f'data-lang="{lang}"></div>'
+        f'data-check="{check}" data-check-mode="{mode}" '
+        f'data-tol="{tol}" '
+        f'data-expected-field="{escape(expected_field or "", quote=True)}" '
+        f'data-lang="{lang}">{expected}</div>'
     )
     return (
         f"{MARKER_START}\n"
@@ -449,10 +954,10 @@ def build_block(cfg: dict) -> str:
     )
 
 
-def inject(qfmt: str, cfg: dict) -> str:
+def inject(qfmt: str, cfg: dict, expected_field: str | None = None) -> str:
     if MARKER_START in qfmt:
         return qfmt
-    return qfmt + "\n" + build_block(cfg)
+    return qfmt + "\n" + build_block(cfg, expected_field)
 
 
 def remove(qfmt: str) -> str:
@@ -465,3 +970,14 @@ def remove(qfmt: str) -> str:
 
 def has_canvas(qfmt: str) -> bool:
     return MARKER_START in qfmt
+
+
+_FIELD_RE = re.compile(r'data-expected-field="([^"]*)"')
+
+
+def expected_field(qfmt: str) -> str:
+    """Return the field an already-injected block checks against, if any."""
+    if not has_canvas(qfmt):
+        return ""
+    m = _FIELD_RE.search(qfmt)
+    return unescape(m.group(1)) if m else ""

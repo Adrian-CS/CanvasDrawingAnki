@@ -16,6 +16,9 @@ character directly inside your flashcard review — on desktop **and** mobile.
   or plain (no grid).
 - **Undo** stroke by stroke and **Clear** button.
 - **Stroke counter** — handy for verifying kanji stroke count.
+- **Stroke checking** *(optional)* — compares what you write against the
+  expected character: shape, position, stroke order and stroke direction,
+  live as you write or on demand. Works on mobile too.
 - **Works on mobile** (AnkiDroid / AnkiMobile) via standard HTML5 Canvas +
   Pointer Events — no add-on required on the mobile side.
 - **Auto-detected UI language**: English, Spanish, or Japanese, following the
@@ -70,6 +73,44 @@ Front: read the meaning / reading  →  draw the character  →  flip  →  comp
 
 ---
 
+## Checking that you wrote the right character
+
+Optionally, the canvas can check your writing against the character the card
+is about, rather than leaving you to compare by eye.
+
+1. In **Tools → Drawing Canvas…**, before clicking **Add Canvas**, set
+   **Check strokes against field** to the field holding the character
+   (`Kanji`, `Character`, `Expression`…). A likely field is pre-selected.
+2. Click **Add Canvas**. The reference data is copied into your collection's
+   media folder, from where it syncs to your phone.
+3. While reviewing, the ✓ button next to the canvas turns checking on and off.
+
+What it tells you, per stroke:
+
+| | |
+|---|---|
+| red stroke | wrong stroke, or clearly the wrong length |
+| amber stroke | right stroke, but out of order or drawn backwards |
+| dashed outline | where that stroke should have gone |
+| line below the canvas | the verdict — `Correct — all 13 strokes`, `9 of 13 strokes correct · stroke 4: out of order`, `1 stroke(s) missing` |
+
+By default each stroke is judged as you lift the pen. Set `check_mode` to
+`"manual"` if you would rather write the whole character undisturbed and
+press **Check** when you are done. Either way the answer side shows the full
+verdict for what you wrote.
+
+Checking is off until you pick a field, and the buttons for it stay hidden on
+templates that have none — nothing changes for plain drawing practice.
+
+Reference stroke data comes from [KanjiVG](https://kanjivg.tagaini.net) and
+covers 6763 characters: all jōyō and jinmeiyō kanji, kana, and many rarer
+characters. Anything outside it (hangul, Latin letters) simply reports that
+there is no reference, and drawing keeps working.
+
+See [`config.md`](config.md) for what the checker can and cannot tell you.
+
+---
+
 ## Configuration
 
 Go to **Tools → Add-ons**, select *Kanji Drawing Canvas*, click **Config**.
@@ -82,6 +123,12 @@ Go to **Tools → Add-ons**, select *Kanji Drawing Canvas*, click **Config**.
 | `stroke_color` | `"#1a1a1a"` | Stroke colour (any CSS value) |
 | `grid_color` | `"#cccccc"` | Guide-line colour |
 | `background_color` | `"#ffffff"` | Canvas background colour |
+| `persist_drawing` | `true` | Keep the drawing when flipping to the answer |
+| `restore_after_undo` | `true` | Restore the drawing when the same question is shown again |
+| `keep_window_seconds` | `90` | How long that restore stays available |
+| `check_strokes` | `false` | Whether stroke checking starts out on |
+| `check_mode` | `"live"` | `"live"` (judge each stroke) or `"manual"` (judge on demand) |
+| `check_tolerance` | `1.0` | How forgiving stroke matching is — raise to accept rougher writing |
 
 After changing config values, **remove and re-add** the canvas on each affected
 template to apply the new settings.
@@ -101,3 +148,9 @@ physical practice sheet.
 ## License
 
 [MIT](LICENSE)
+
+The stroke reference data in `drawing/data/` is derived from
+[KanjiVG](https://kanjivg.tagaini.net) (© Ulrich Apel) and is distributed
+under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/), as
+that licence requires — see
+[`drawing/data/KANJIVG-LICENSE.txt`](drawing/data/KANJIVG-LICENSE.txt).

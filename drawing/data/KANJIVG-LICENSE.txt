@@ -1,0 +1,27 @@
+The stroke reference data in this directory (strokes.js.gz) is derived from
+KanjiVG.
+
+    KanjiVG — Copyright (C) 2009/2010/2011 Ulrich Apel
+    https://kanjivg.tagaini.net
+
+KanjiVG is distributed under the Creative Commons Attribution-Share Alike
+3.0 Licence. This means you are free:
+
+* to Share — to copy, distribute and transmit the work
+* to Remix — to adapt the work
+
+Under the following conditions:
+
+* Attribution. You must attribute the work by stating your use of KanjiVG
+  in your own copyright header and linking to KanjiVG's website
+  (https://kanjivg.tagaini.net)
+* Share Alike. If you alter, transform, or build upon this work, you may
+  distribute the resulting work only under the same or similar license to
+  this one.
+
+See https://creativecommons.org/licenses/by-sa/3.0/ for more details.
+
+strokes.js.gz is such a derivative work — KanjiVG's stroke paths flattened,
+simplified and re-encoded by tools/build_stroke_data.py — and is therefore
+distributed under CC BY-SA 3.0 as well. The rest of the Kanji Drawing
+Canvas add-on is MIT-licensed.
