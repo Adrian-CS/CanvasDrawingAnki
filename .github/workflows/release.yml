@@ -4,6 +4,14 @@ on:
   push:
     tags:
       - "v*"
+  # Lets a release be cut from the Actions tab as well; the tag is created
+  # at the commit the workflow runs on if it does not exist yet.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag to release, e.g. v0.5.0"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,6 +22,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Check the tag matches the add-on version
+        run: |
+          tag="${{ inputs.version || github.ref_name }}"
+          version=$(python3 -c "import json; print(json.load(open('manifest.json'))['human_version'])")
+          if [ "$tag" != "v$version" ]; then
+            echo "tag $tag does not match manifest.json version $version" >&2
+            exit 1
+          fi
 
       - name: Check stroke data is in sync with the generator
         run: python3 tools/check_stroke_data.py
@@ -32,5 +49,6 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.version || github.ref_name }}
           files: kanjiDrawingAnki.ankiaddon
           generate_release_notes: true
