@@ -156,17 +156,31 @@ function makeEnv(opts) {
   return { doc, win, localStorage, store, navigator: { language: o.lang } };
 }
 
+/** Every canvas the card built, in order — one per character checked. */
+function cellsOf(doc) {
+  const out = [];
+  for (let i = 0; ; i++) {
+    const canvas = doc.getElementById('kda-canvas-' + i);
+    if (!canvas) { return out; }
+    out.push({
+      canvas,
+      msg: doc.getElementById('kda-msg-' + i),
+      counter: doc.getElementById('kda-ctr-' + i),
+      bar: doc.getElementById('kda-bar-' + i),
+    });
+  }
+}
+
 /** Run the card script inside an environment built by makeEnv(). */
 function runCard(env) {
   const js = extractCanvasJs();
   const fn = new Function(
     'document', 'window', 'localStorage', 'navigator', js);
   fn(env.doc, env.win, env.localStorage, env.navigator);
-  return {
-    canvas: env.doc.getElementById('kda-canvas'),
-    msg: env.doc.getElementById('kda-msg'),
-    counter: env.doc.getElementById('kda-ctr'),
-  };
+  const cells = cellsOf(env.doc);
+  // Most tests drive a single-character card, so the first cell's parts are
+  // exposed directly; `cells` is there for the multi-character ones.
+  return Object.assign({ cells }, cells[0]);
 }
 
 /** Draw one stroke on the canvas as a real pointer would. */
@@ -187,5 +201,5 @@ function drawStroke(canvas, pts) {
 
 module.exports = {
   extractCanvasJs, loadStrokeData, referenceStrokes,
-  makeEnv, runCard, drawStroke,
+  makeEnv, runCard, drawStroke, cellsOf,
 };
