@@ -18,10 +18,10 @@ jobs:
           node-version: "20"
 
       - name: Check the stroke dataset
-        run: python tools/check_stroke_data.py
+        run: python3 tools/check_stroke_data.py
 
       - name: Stroke-checking tests
         run: node tests/test_checking.js
 
       - name: Byte-compile the add-on
-        run: python -m compileall -q __init__.py drawing tools
+        run: python3 -m compileall -q __init__.py drawing tools
