@@ -110,11 +110,21 @@ telling apart characters as close as 未 and 末. Raise it (`1.3`) if your
 handwriting keeps being marked wrong; lower it (`0.8`) to be held to a
 stricter standard.
 
+**More than one character**
+
+A field holding a word gets one canvas per character, side by side in
+writing order, each checked against its own character: 図書館 gives three,
+食べる gives three (KanjiVG covers kana too). Furigana readings in square
+brackets are ignored, so a field holding 漢字[かんじ] still gives two
+canvases and not five. The canvases share the width and wrap onto another
+line when they no longer fit, and the preference buttons move to a row of
+their own below them instead of being repeated under each canvas.
+
+A field holding a whole sentence would fill the card with canvases, so at
+most eight characters are taken; the rest are left out.
+
 Some limits are worth knowing about:
 
-- Only one character per card is checked — the first CJK character in the
-  chosen field. A field holding a whole word is checked against its first
-  character.
 - Stroke checking is shape matching, not recognition. It is good at
   catching a wrong stroke order, a stroke drawn backwards, a missing
   stroke and a genuinely different character; it cannot grade calligraphy,

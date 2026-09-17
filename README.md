@@ -18,7 +18,8 @@ character directly inside your flashcard review — on desktop **and** mobile.
 - **Stroke counter** — handy for verifying kanji stroke count.
 - **Stroke checking** *(optional)* — compares what you write against the
   expected character: shape, position, stroke order and stroke direction,
-  live as you write or on demand. Works on mobile too.
+  live as you write or on demand. A field holding a word gets one canvas
+  per character. Works on mobile too.
 - **Works on mobile** (AnkiDroid / AnkiMobile) via standard HTML5 Canvas +
   Pointer Events — no add-on required on the mobile side.
 - **Auto-detected UI language**: English, Spanish, or Japanese, following the
@@ -93,6 +94,11 @@ What it tells you, per stroke:
 | amber stroke | right stroke, but out of order or drawn backwards |
 | dashed outline | where that stroke should have gone |
 | line below the canvas | the verdict — `Correct — all 13 strokes`, `9 of 13 strokes correct · stroke 4: out of order`, `1 stroke(s) missing` |
+
+If the field holds a word rather than a single character, you get one
+canvas per character, side by side and each checked against its own
+character — 図書館 gives three. Furigana readings in brackets are ignored,
+so 漢字[かんじ] still gives two canvases and not five.
 
 By default each stroke is judged as you lift the pen. Set `check_mode` to
 `"manual"` if you would rather write the whole character undisturbed and

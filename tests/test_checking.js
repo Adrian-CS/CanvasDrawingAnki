@@ -37,7 +37,10 @@ function write(char, transform, opts) {
 }
 
 function pressCheck(env) {
-  const bar = env.doc.getElementById('kda-bar');
+  // The Check button lives in the single cell's own bar on a one-character
+  // card and in the shared settings row when there are several.
+  const bar = env.doc.getElementById('kda-settings-bar')
+           || env.doc.getElementById('kda-bar-0');
   bar.children.find(
     (c) => c.tagName === 'button' && c.textContent === 'Check')._fire('click', {});
 }
@@ -262,7 +265,7 @@ console.log('\nanswer side');
                         isBack: true,
                         storage: { kda_last_strokes: JSON.stringify(incomplete) } });
   runCard(env);
-  const msg = env.doc.getElementById('kda-msg');
+  const msg = env.doc.getElementById('kda-msg-0');
   check('an unfinished character is reported on the answer side',
         /1 stroke\(s\) missing/.test(msg.textContent),
         'got: ' + msg.textContent);
@@ -273,7 +276,7 @@ console.log('\nanswer side');
                         isBack: true,
                         storage: { kda_last_strokes: JSON.stringify(complete) } });
   runCard(env);
-  const msg = env.doc.getElementById('kda-msg');
+  const msg = env.doc.getElementById('kda-msg-0');
   check('a correct character is confirmed on the answer side',
         /^Correct/.test(msg.textContent), 'got: ' + msg.textContent);
 }
@@ -285,8 +288,133 @@ console.log('\ndrawing itself is unaffected');
   const { ui, env } = write('日');
   check('stroke counter still counts', /Strokes: 4/.test(ui.counter.textContent),
         'got: ' + ui.counter.textContent);
+  // Storage holds one stroke list per canvas, so a one-character card
+  // saves a single list of four strokes.
+  const saved = JSON.parse(env.store.kda_last_strokes || '[]');
   check('strokes are still saved for the answer side',
-        JSON.parse(env.store.kda_last_strokes || '[]').length === 4);
+        saved.length === 1 && saved[0].length === 4,
+        'got: ' + JSON.stringify(saved.map((c) => c.length)));
+}
+
+// ── More than one character per card ─────────────────────────────────
+
+console.log('\nmultiple characters');
+
+function writeWord(field, written, opts) {
+  const env = makeEnv(Object.assign(
+    { expected: field, strokeData: DATA, size: SIZE }, opts || {}));
+  const ui = runCard(env);
+  written.forEach((ch, i) => {
+    if (!ch || !ui.cells[i]) { return; }
+    referenceStrokes(DATA, ch, SIZE).forEach(
+      (s) => drawStroke(ui.cells[i].canvas, s));
+  });
+  return { env, ui };
+}
+
+{
+  const { ui } = writeWord('漢字', ['漢', '字']);
+  check('a two-character field gets two canvases', ui.cells.length === 2,
+        'got ' + ui.cells.length);
+  check('both characters are checked',
+        ui.cells.every((c) => /^Correct/.test(c.msg.textContent)),
+        'got: ' + ui.cells.map((c) => c.msg.textContent).join(' | '));
+}
+{
+  // Right first character, wrong second — each canvas answers for itself.
+  const { ui } = writeWord('漢字', ['漢', '学']);
+  check('a wrong character is reported on its own canvas',
+        /^Correct/.test(ui.cells[0].msg.textContent)
+          && !/^Correct/.test(ui.cells[1].msg.textContent),
+        'got: ' + ui.cells.map((c) => c.msg.textContent).join(' | '));
+}
+{
+  const { ui } = writeWord('図書館', ['図', '書', '館']);
+  check('three characters, all three checked',
+        ui.cells.length === 3
+          && ui.cells.every((c) => /^Correct/.test(c.msg.textContent)),
+        'got: ' + ui.cells.map((c) => c.msg.textContent).join(' | '));
+}
+{
+  // A field carrying its reading must not turn the reading into canvases.
+  const { ui } = writeWord('漢字[かんじ]', ['漢', '字']);
+  check('furigana readings do not become canvases', ui.cells.length === 2,
+        'got ' + ui.cells.length);
+  check('the characters themselves are still checked',
+        ui.cells.every((c) => /^Correct/.test(c.msg.textContent)),
+        'got: ' + ui.cells.map((c) => c.msg.textContent).join(' | '));
+}
+{
+  const { ui } = writeWord('食べる', ['食', 'べ', 'る']);
+  check('kana get canvases and references too',
+        ui.cells.length === 3
+          && ui.cells.every((c) => /^Correct/.test(c.msg.textContent)),
+        'got: ' + ui.cells.map((c) => c.msg.textContent).join(' | '));
+}
+{
+  const env = makeEnv({ expected: '今日は良い天気ですね今日も', strokeData: DATA,
+                        size: SIZE });
+  const ui = runCard(env);
+  check('a sentence is capped at eight canvases', ui.cells.length === 8,
+        'got ' + ui.cells.length);
+}
+{
+  const env = makeEnv({ expected: 'hello', strokeData: DATA, size: SIZE });
+  const ui = runCard(env);
+  check('a field with no CJK still gives one plain canvas',
+        ui.cells.length === 1 && ui.cells[0].msg.textContent === '');
+}
+{
+  // Front to back: every canvas's strokes must survive the flip.
+  const front = writeWord('漢字', ['漢', '字']);
+  const back = makeEnv({ expected: '漢字', strokeData: DATA, size: SIZE,
+                         isBack: true, storage: front.env.store });
+  const ui = runCard(back);
+  check('both canvases come back on the answer side',
+        ui.cells.length === 2
+          && ui.cells.every((c) => /^Correct/.test(c.msg.textContent)),
+        'got: ' + ui.cells.map((c) => c.msg.textContent).join(' | '));
+}
+{
+  // A drawing saved by the pre-multi-character version is a bare stroke
+  // list; it must still land on the first canvas rather than being lost.
+  const old = JSON.stringify(referenceStrokes(DATA, '漢', SIZE));
+  const env = makeEnv({ expected: '漢', strokeData: DATA, size: SIZE,
+                        isBack: true, storage: { kda_last_strokes: old } });
+  const ui = runCard(env);
+  check('a drawing saved by the older format still restores',
+        /^Correct/.test(ui.cells[0].msg.textContent),
+        'got: ' + ui.cells[0].msg.textContent);
+}
+{
+  const { env, ui } = writeWord('漢字', ['漢', '字']);
+  const saved = JSON.parse(env.store.kda_last_strokes || '[]');
+  check('each canvas is saved separately',
+        saved.length === 2 && saved[0].length === 13 && saved[1].length === 6,
+        'got: ' + JSON.stringify(saved.map((c) => c.length)));
+  check('the settings row appears once, not per canvas',
+        !!env.doc.getElementById('kda-settings-bar')
+          && !ui.cells[0].bar.children.some((c) => c.textContent === '✓'),
+        'settings duplicated into a cell bar');
+}
+{
+  const { env, ui } = writeWord('漢字', ['漢', '字'], { checkMode: 'manual' });
+  check('manual mode stays quiet across every canvas',
+        ui.cells.every((c) => c.msg.textContent === ''),
+        'got: ' + ui.cells.map((c) => c.msg.textContent).join(' | '));
+  pressCheck(env);
+  check('one Check press judges every canvas',
+        ui.cells.every((c) => /^Correct/.test(c.msg.textContent)),
+        'got: ' + ui.cells.map((c) => c.msg.textContent).join(' | '));
+}
+{
+  // Leaving a character out entirely: the Check button must say so rather
+  // than quietly passing the blank canvas over.
+  const { env, ui } = writeWord('漢字', ['漢', null], { checkMode: 'manual' });
+  pressCheck(env);
+  check('a character left blank is reported as missing',
+        /missing/.test(ui.cells[1].msg.textContent),
+        'got: ' + ui.cells[1].msg.textContent);
 }
 
 console.log(failures ? '\n' + failures + ' failing' : '\nall passing');

@@ -19,7 +19,8 @@ tarjetas — tanto en escritorio **como** en móvil.
 - **Contador de trazos** — útil para verificar el número de trazos de un kanji.
 - **Comprobación de trazos** *(opcional)* — compara lo que escribes con el
   carácter esperado: forma, posición, orden y dirección de cada trazo, sobre
-  la marcha o cuando tú lo pidas. También funciona en móvil.
+  la marcha o cuando tú lo pidas. Si el campo contiene una palabra, se añade
+  un canvas por carácter. También funciona en móvil.
 - **Funciona en móvil** (AnkiDroid / AnkiMobile) mediante HTML5 Canvas +
   Pointer Events estándar — no se necesita complemento en el lado móvil.
 - **Idioma de la interfaz detectado automáticamente**: inglés, español o
@@ -97,6 +98,11 @@ Lo que te dice, trazo a trazo:
 | trazo ámbar | trazo correcto, pero fuera de orden o en dirección invertida |
 | contorno punteado | dónde debería haber ido ese trazo |
 | línea bajo el canvas | el veredicto — `¡Correcto! Los 13 trazos`, `9 de 13 trazos correctos · trazo 4: fuera de orden`, `Faltan 1 trazo(s)` |
+
+Si el campo contiene una palabra en lugar de un solo carácter, obtienes un
+canvas por carácter, uno al lado del otro y cada uno comprobado contra el
+suyo — 図書館 da tres. Las lecturas furigana entre corchetes se ignoran, así
+que 漢字[かんじ] sigue dando dos canvas y no cinco.
 
 Por defecto cada trazo se juzga al levantar el dedo. Pon `check_mode` en
 `"manual"` si prefieres escribir el carácter entero sin interrupciones y pulsar
