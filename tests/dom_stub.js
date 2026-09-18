@@ -98,17 +98,39 @@ class Element {
   getBoundingClientRect() {
     return { left: 0, top: 0, width: this.width, height: this.height };
   }
-  getContext() { return makeCtx(); }
+  getContext() {
+    if (!this._ctx) { this._ctx = makeCtx(); }
+    return this._ctx;
+  }
 }
 
-/* A canvas context that records nothing — the assertions in these tests are
- * about verdicts and messages, not pixels. */
+/* A canvas context that records just enough to tell what was painted: the
+ * assertions here are about verdicts, not pixels, except for the dashed
+ * outline of an expected stroke, which is a visible piece of feedback and
+ * worth testing. Every redraw starts with clearRect, so counting the dash
+ * patterns after the last one describes the canvas as it stands. */
 function makeCtx() {
+  const ops = [];
   const noop = () => {};
   return {
+    ops,
     save: noop, restore: noop, beginPath: noop, moveTo: noop, lineTo: noop,
-    stroke: noop, clearRect: noop, fillRect: noop, setLineDash: noop,
+    fillRect: noop,
+    stroke: () => ops.push(['stroke']),
+    clearRect: () => ops.push(['clearRect']),
+    setLineDash: (d) => ops.push(['setLineDash', (d || []).join(',')]),
   };
+}
+
+const GHOST_DASH = '6,5';
+
+/** How many expected-stroke outlines the canvas currently shows. */
+function ghostsDrawn(canvas) {
+  const ops = canvas.getContext().ops;
+  let from = 0;
+  ops.forEach((op, i) => { if (op[0] === 'clearRect') { from = i; } });
+  return ops.slice(from).filter(
+    (op) => op[0] === 'setLineDash' && op[1] === GHOST_DASH).length;
 }
 
 /** Build a fresh global environment with one card rendered in it. */
@@ -201,5 +223,5 @@ function drawStroke(canvas, pts) {
 
 module.exports = {
   extractCanvasJs, loadStrokeData, referenceStrokes,
-  makeEnv, runCard, drawStroke, cellsOf,
+  makeEnv, runCard, drawStroke, cellsOf, ghostsDrawn,
 };

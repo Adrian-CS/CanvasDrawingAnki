@@ -93,6 +93,7 @@ What it tells you, per stroke:
 | red stroke | wrong stroke, or clearly the wrong length |
 | amber stroke | right stroke, but out of order or drawn backwards |
 | dashed outline | where that stroke should have gone |
+| the wording | *out of order*, *drawn backwards*, *right shape, wrong place*, *wrong length*, *wrong shape* — the verdict names the mistake |
 | line below the canvas | the verdict — `Correct — all 13 strokes`, `9 of 13 strokes correct · stroke 4: out of order`, `1 stroke(s) missing` |
 
 If the field holds a word rather than a single character, you get one

@@ -97,6 +97,7 @@ Lo que te dice, trazo a trazo:
 | trazo rojo | trazo incorrecto, o con una longitud claramente distinta |
 | trazo ámbar | trazo correcto, pero fuera de orden o en dirección invertida |
 | contorno punteado | dónde debería haber ido ese trazo |
+| el texto | *fuera de orden*, *dirección invertida*, *forma correcta, sitio equivocado*, *longitud incorrecta*, *forma incorrecta* — el veredicto nombra el fallo |
 | línea bajo el canvas | el veredicto — `¡Correcto! Los 13 trazos`, `9 de 13 trazos correctos · trazo 4: fuera de orden`, `Faltan 1 trazo(s)` |
 
 Si el campo contiene una palabra en lugar de un solo carácter, obtienes un
