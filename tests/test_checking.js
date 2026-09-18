@@ -10,7 +10,7 @@
 'use strict';
 
 const {
-  loadStrokeData, referenceStrokes, makeEnv, runCard, drawStroke,
+  loadStrokeData, referenceStrokes, makeEnv, runCard, drawStroke, ghostsDrawn,
 } = require('./dom_stub');
 
 const SIZE = 300;
@@ -207,6 +207,100 @@ console.log('\nmistakes are reported');
   check('a different character scores poorly',
         okCount !== undefined && Number(okCount) <= 4,
         'got: ' + ui.msg.textContent);
+}
+
+// ── Saying what is actually wrong ────────────────────────────────────
+
+/* "Wrong stroke" tells the writer nothing they don't already know. Each
+ * kind of mistake has its own advice, and these pin the wording to the
+ * mistake that earns it. */
+console.log('\nthe verdict names the mistake');
+{
+  const moved = (i, dx, dy) => (s) => {
+    const t = s.map((x) => x.slice());
+    t[i] = t[i].map((p) => ({ x: p.x + dx, y: p.y + dy }));
+    return t;
+  };
+  const stretched = (i, k) => (s) => {
+    const t = s.map((x) => x.slice());
+    const c = t[i][0];
+    t[i] = t[i].map((p) => ({ x: c.x + (p.x - c.x) * k, y: c.y + (p.y - c.y) * k }));
+    return t;
+  };
+  const scribble = (i) => (s) => {
+    const t = s.map((x) => x.slice());
+    t[i] = [{ x: 60, y: 250 }, { x: 240, y: 60 }];
+    return t;
+  };
+  [['right shape, wrong place', '日', moved(1, 55, 0), /right shape, wrong place/],
+   ['wrong length', '日', stretched(0, 2.2), /wrong length/],
+   ['wrong shape', '日', scribble(2), /wrong shape/],
+   ['drawn backwards', '日',
+    (s) => { const t = s.slice(); t[1] = t[1].slice().reverse(); return t; },
+    /drawn backwards/],
+   ['out of order', '漢',
+    (s) => { const t = s.slice(); const x = t[4]; t[4] = t[5]; t[5] = x; return t; },
+    /out of order/],
+  ].forEach(([name, ch, distort, expected]) => {
+    const text = verdict(ch, distort).ui.msg.textContent;
+    check('a stroke ' + name + ' is named as such', expected.test(text),
+          'got: ' + text);
+  });
+  check('no verdict falls back to a bare "wrong stroke"',
+        !/wrong stroke/.test(verdict('日', scribble(2)).ui.msg.textContent));
+}
+
+// ── Showing where the stroke should have gone ────────────────────────
+
+console.log('\nthe expected stroke is shown');
+{
+  // Live mode, mid-character: a wrong stroke must show its target straight
+  // away — being told a stroke is wrong with nothing to correct towards is
+  // the complaint this answers.
+  const strokes = referenceStrokes(DATA, '日', SIZE);
+  strokes[1] = strokes[1].map((p) => ({ x: p.x - 55, y: p.y + 30 }));
+  const env = makeEnv({ expected: '日', strokeData: DATA, size: SIZE,
+                        storage: { kda_fit: JSON.stringify({ s: 1, dx: 0, dy: 0 }) } });
+  const ui = runCard(env);
+  drawStroke(ui.canvas, strokes[0]);
+  check('a correct stroke shows no outline', ghostsDrawn(ui.canvas) === 0,
+        'got ' + ghostsDrawn(ui.canvas));
+  drawStroke(ui.canvas, strokes[1]);
+  check('a wrong stroke shows where it should have gone',
+        ghostsDrawn(ui.canvas) === 1, 'got ' + ghostsDrawn(ui.canvas));
+  check('and says what was wrong with it',
+        /right shape, wrong place/.test(ui.msg.textContent),
+        'got: ' + ui.msg.textContent);
+}
+
+// ── Writing smaller than the box ─────────────────────────────────────
+
+/* Alignment is measured from the drawing's own box, which does not exist
+ * for the opening strokes — so without remembering how big this person
+ * writes, everyone who does not fill the box is told their first two
+ * strokes are wrong, on every single character. */
+console.log('\nwriting smaller than the box');
+{
+  const small = scale(0.7, 45, 45);
+  const first = write('日', small);
+  check('a finished character is measured and remembered',
+        !!first.env.store.kda_fit, 'nothing stored');
+  check('and it is still accepted',
+        /^Correct/.test(first.ui.msg.textContent),
+        'got: ' + first.ui.msg.textContent);
+
+  // Next card, same person: the opening stroke is now judged in their frame.
+  const env = makeEnv({ expected: '語', strokeData: DATA, size: SIZE,
+                        storage: { kda_fit: first.env.store.kda_fit } });
+  const ui = runCard(env);
+  const strokes = small(referenceStrokes(DATA, '語', SIZE));
+  drawStroke(ui.canvas, strokes[0]);
+  check('the first stroke of the next card is not called wrong',
+        !/wrong|place|length|shape/.test(ui.msg.textContent),
+        'got: ' + ui.msg.textContent);
+  strokes.slice(1).forEach((s) => drawStroke(ui.canvas, s));
+  check('and the whole character is accepted',
+        /^Correct/.test(ui.msg.textContent), 'got: ' + ui.msg.textContent);
 }
 
 // ── Modes and opt-out ────────────────────────────────────────────────

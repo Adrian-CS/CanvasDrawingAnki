@@ -46,7 +46,9 @@ _CANVAS_JS = r"""(function () {
           score: '{ok} of {n} strokes correct',
           missing: '{n} stroke(s) missing',
           extra: '{n} stroke(s) too many',
-          eBad: 'stroke {i}: wrong stroke',
+          eShape: 'stroke {i}: wrong shape',
+          ePlace: 'stroke {i}: right shape, wrong place',
+          eExtra: 'stroke {i}: extra stroke',
           eLen: 'stroke {i}: wrong length',
           eOrder: 'stroke {i}: out of order',
           eRev: 'stroke {i}: drawn backwards',
@@ -61,7 +63,9 @@ _CANVAS_JS = r"""(function () {
           score: '{ok} de {n} trazos correctos',
           missing: 'Faltan {n} trazo(s)',
           extra: 'Sobran {n} trazo(s)',
-          eBad: 'trazo {i}: incorrecto',
+          eShape: 'trazo {i}: forma incorrecta',
+          ePlace: 'trazo {i}: forma correcta, sitio equivocado',
+          eExtra: 'trazo {i}: trazo de más',
           eLen: 'trazo {i}: longitud incorrecta',
           eOrder: 'trazo {i}: fuera de orden',
           eRev: 'trazo {i}: dirección invertida',
@@ -76,7 +80,9 @@ _CANVAS_JS = r"""(function () {
           score: '{n}画中{ok}画が正しい',
           missing: '{n}画不足',
           extra: '{n}画多い',
-          eBad: '{i}画目: 誤り',
+          eShape: '{i}画目: 形が違います',
+          ePlace: '{i}画目: 形は合っているが位置が違います',
+          eExtra: '{i}画目: 余分な画',
           eLen: '{i}画目: 長さが違います',
           eOrder: '{i}画目: 筆順が違います',
           eRev: '{i}画目: 方向が逆です',
@@ -108,6 +114,28 @@ _CANVAS_JS = r"""(function () {
   var CHECK_MODE = d.checkMode === 'manual' ? 'manual' : 'live';
   // Multiplies every matching threshold — >1 is more forgiving.
   var TOL = parseFloat(d.tol) || 1;
+
+  /* Where and how big this person writes, remembered between cards.
+     Alignment is measured from the drawing's own bounding box, which needs
+     a few strokes to exist — so without this the opening strokes of every
+     character are judged against a full-em-box reference and anyone who
+     writes smaller than the box is told their first two strokes are wrong.
+     People write at a consistent size, so the last good measurement is a
+     far better guess than assuming the box is filled. Stored as fractions
+     of the canvas so it survives a change of canvas_size. */
+  var _LS_KEY_FIT = 'kda_fit';
+  function loadFit() {
+    var f;
+    try { f = JSON.parse(localStorage.getItem(_LS_KEY_FIT) || 'null'); } catch(e) { return null; }
+    if (!f || typeof f.s !== 'number') { return null; }
+    return { s: f.s, dx: f.dx * SZ, dy: f.dy * SZ };
+  }
+  function saveFit(xf) {
+    try {
+      localStorage.setItem(_LS_KEY_FIT, JSON.stringify(
+        { s: xf.s, dx: xf.dx / SZ, dy: xf.dy / SZ }));
+    } catch(e) {}
+  }
 
   /* The characters to check against, rendered into a hidden span inside
      the anchor by the note field chosen in the dialog. A field often holds
@@ -461,8 +489,8 @@ _CANVAS_JS = r"""(function () {
      wrong fit from rescuing a genuinely wrong character: at least three
      matched strokes, a span wide enough to be meaningful, and a scale that
      stays within sane bounds. */
-  function fitTransform(drawnList, refList) {
-    if (drawnList.length < 3) { return IDENTITY; }
+  function fitTransform(drawnList, refList, minStrokes) {
+    if (drawnList.length < (minStrokes || 3)) { return IDENTITY; }
     var db = bbox(drawnList), rb = bbox(refList);
     var span = Math.max(db.w, db.h), rspan = Math.max(rb.w, rb.h);
     if (span < SZ * 0.2 || rspan < SZ * 0.2) { return IDENTITY; }
@@ -478,6 +506,19 @@ _CANVAS_JS = r"""(function () {
     return pts.map(function (p) {
       return { x: p.x * xf.s + xf.dx, y: p.y * xf.s + xf.dy };
     });
+  }
+
+  /* The same stroke with its placement taken out, so its shape can be
+     judged on its own — that is what separates "you drew the right stroke
+     in the wrong place" from "that is not this stroke at all". */
+  function centred(pts) {
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    pts.forEach(function (p) {
+      if (p.x < x0) { x0 = p.x; } if (p.x > x1) { x1 = p.x; }
+      if (p.y < y0) { y0 = p.y; } if (p.y > y1) { y1 = p.y; }
+    });
+    var cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    return pts.map(function (p) { return { x: p.x - cx, y: p.y - cy }; });
   }
 
   function pathLength(pts) {
@@ -513,14 +554,53 @@ _CANVAS_JS = r"""(function () {
   // just counts the rest.
   var MAX_ERRS = 3;
 
+  /* Why a stroke matched nothing. Comparing it again with its placement
+     taken out separates the three cases worth different advice: the shape
+     is right and only sits in the wrong place, the shape is right but the
+     stroke is far too long or short, or it is simply not that stroke.
+     Without this everything that fails reads "wrong stroke", which tells
+     the writer nothing they didn't already know. */
+  function diagnose(drawn, refIdx, refs, xf, i, noFrame) {
+    if (refIdx < 0) { return { v: 'bad', e: fmt(L.eExtra, { i: i + 1 }) }; }
+    var refPts = applyXf(refs[refIdx], xf);
+    var mine = resample(drawn, NRS), ref = resample(refPts, NRS);
+    var lr = pathLength(refPts), ld = pathLength(drawn);
+    var limit = MATCH_TH * TOL;
+
+    // Same shape, just not where it belongs.
+    var fwd = meanDist(centred(mine), centred(ref)) / SZ;
+    var rev = meanDist(centred(mine.slice().reverse()), centred(ref)) / SZ;
+    if (Math.min(fwd, rev) <= limit) {
+      if (!noFrame && Math.max(lr, ld) / SZ > LEN_MIN &&
+          (ld > lr * LEN_RATIO || lr > ld * LEN_RATIO)) {
+        return { v: 'bad', e: fmt(L.eLen, { i: i + 1 }) };
+      }
+      if (rev < fwd * REV_RATIO) { return { v: 'rev', e: fmt(L.eRev, { i: i + 1 }) }; }
+      return { v: 'bad', e: fmt(L.ePlace, { i: i + 1 }) };
+    }
+
+    // Same shape once the size is taken out too: the stroke runs the right
+    // way, it is simply far too long or too short.
+    if (!noFrame && ld > 0 && lr > 0) {
+      var scaled = centred(mine).map(function (p) {
+        return { x: p.x * lr / ld, y: p.y * lr / ld };
+      });
+      if (meanDist(scaled, centred(ref)) / SZ <= limit) {
+        return { v: 'bad', e: fmt(L.eLen, { i: i + 1 }) };
+      }
+    }
+    return { v: 'bad', e: fmt(L.eShape, { i: i + 1 }) };
+  }
+
   /* Greedy sequential matching. Each drawn stroke is matched against the
      best still-unclaimed reference stroke; comparing against the expected
      one alone could not tell "wrong stroke" apart from "right stroke, drawn
      too early", which is exactly the mistake stroke-order practice is for.
      A stroke that matches nothing consumes the expected slot anyway so the
      rest of the character still lines up. */
-  function evaluate(drawnList, refs, seed) {
+  function evaluate(drawnList, refs, seed, noFrame) {
     var used = [], pairsD = [], pairsR = [], v = [], errs = [], refOf = [];
+    var cost = 0, limit = MATCH_TH * TOL;
     for (var i = 0; i < drawnList.length; i++) {
       // A seed measured from the drawing as a whole beats anything derived
       // from matches made so far, which would need the very alignment they
@@ -536,9 +616,22 @@ _CANVAS_JS = r"""(function () {
         var mine = resample(drawnList[i], NRS);
         var fwd = meanDist(mine, ref) / SZ;
         var rev = meanDist(mine.slice().reverse(), ref) / SZ;
+        /* Before anything has been drawn to measure — the opening strokes
+           of the first character this device ever checks — there is no way
+           to know where on the canvas this person writes or how big.
+           Judging placement then only punishes writing smaller than the em
+           box, so fall back to comparing the shape alone until there is a
+           frame to judge placement against. */
+        if (noFrame) {
+          fwd = Math.min(fwd, meanDist(centred(mine), centred(ref)) / SZ);
+          rev = Math.min(rev, meanDist(centred(mine.slice().reverse()),
+                                       centred(ref)) / SZ);
+        }
         var score = Math.min(fwd, rev);
+        // Only once there is a frame: against an unaligned reference every
+        // stroke of someone writing at two thirds of the box is "too short".
         var lr = pathLength(refPts) / SZ, ld = pathLength(drawnList[i]) / SZ;
-        var badLen = Math.max(lr, ld) > LEN_MIN &&
+        var badLen = !noFrame && Math.max(lr, ld) > LEN_MIN &&
                      (ld > lr * LEN_RATIO || lr > ld * LEN_RATIO);
         if (!best || score < best.score) {
           best = { j: j, score: score, rev: rev < fwd * REV_RATIO,
@@ -548,12 +641,15 @@ _CANVAS_JS = r"""(function () {
       if (!best || best.score > MATCH_TH * TOL) {
         // Nothing this could be. Consume the slot it should have filled so
         // the strokes after it are still judged against the right shapes.
-        v.push('bad');
-        errs.push(fmt(L.eBad, { i: i + 1 }));
+        var why = diagnose(drawnList[i], expected, refs, xf, i, noFrame);
+        v.push(why.v);
+        errs.push(why.e);
         refOf.push(expected);
+        cost += limit;
         if (expected !== -1) { used[expected] = true; }
         continue;
       }
+      cost += best.score;
       // From here the stroke is at least *this* reference stroke, so pair
       // them up whatever the verdict — a wrong-length or reversed stroke
       // still tells the alignment where the writer is working, and letting
@@ -577,7 +673,7 @@ _CANVAS_JS = r"""(function () {
       }
     }
     var xfFinal = fitTransform(pairsD, pairsR);
-    return { v: v, errs: errs, xf: xfFinal, refOf: refOf,
+    return { v: v, errs: errs, xf: xfFinal, refOf: refOf, cost: cost,
              ok: v.filter(function (x) { return x === 'ok'; }).length };
   }
 
@@ -790,25 +886,61 @@ _CANVAS_JS = r"""(function () {
       // Measure how big and where the writing is before judging any of it:
       // the reference prefix of the same length is what a writer who is on
       // track has produced, so their bounding boxes should coincide.
-      var seed = fitTransform(
-        cell.strokes, refs.slice(0, Math.min(cell.strokes.length, refs.length)));
-      var r = evaluate(cell.strokes, refs, seed === IDENTITY ? null : seed);
-      // Once strokes are paired up, refit on the pairs alone — that drops
-      // any stroke that was never going to match out of the measurement.
-      if (r.xf !== IDENTITY && r.xf !== seed) {
-        r = evaluate(cell.strokes, refs, r.xf);
+      /* Which frame is this person writing in? Rather than guess once,
+         try the candidates and keep whichever explains the drawing best:
+         the em box itself, the size and position measured from the last
+         character they completed, and the box of what they have drawn so
+         far. Guessing once is what made a single badly misplaced stroke
+         drag the measured box with it and mark the correct stroke beside
+         it wrong too — that guess now simply loses to a better one. */
+      var frames = [null];
+      var learned = loadFit();
+      if (learned) { frames.push(learned); }
+      /* Two strokes are normally too few to measure a box from — one badly
+         misplaced stroke would drag it along and make the correct stroke
+         beside it look wrong too. A finished character is different: all of
+         it is there to measure, and two-stroke characters like 刀 and 力
+         would otherwise never get a frame at all and so never be told
+         apart. */
+      var complete = cell.strokes.length >= refs.length;
+      var measured = fitTransform(
+        cell.strokes, refs.slice(0, Math.min(cell.strokes.length, refs.length)),
+        complete ? 2 : 3);
+      if (measured !== IDENTITY) { frames.push(measured); }
+
+      /* No frame, and not enough drawing to measure one: the opening
+         strokes of the first character this device ever checks. Judge the
+         shapes alone rather than punish writing smaller than the box.
+         A finished character is never in that position — if its box came
+         out implausible, that is the drawing being wrong, not the frame
+         being unknown, and it is judged against the box itself. */
+      var noFrame = frames.length === 1 && !complete;
+      var r = null;
+      frames.forEach(function (f) {
+        var t = evaluate(cell.strokes, refs, f, noFrame);
+        if (!r || t.cost < r.cost) { r = t; }
+      });
+      // Refit on the strokes that paired up, which drops any stroke that
+      // was never going to match out of the measurement.
+      if (!noFrame && r.xf !== IDENTITY) {
+        var refined = evaluate(cell.strokes, refs, r.xf, false);
+        if (refined.cost <= r.cost) { r = refined; }
       }
+
       cell.verdicts = r.v;
+      // A measurement worth keeping: enough strokes landed for the fit to
+      // mean something, so the next character's opening strokes start from
+      // it instead of from an assumption.
+      if (r.xf !== IDENTITY && r.ok >= 3) { saveFit(r.xf); }
+      // Every stroke that went wrong shows where it should have gone —
+      // being told a stroke is wrong without being shown the right one
+      // leaves you nothing to correct towards. They appear only after the
+      // stroke is already committed, so this is feedback, not tracing.
       cell.ghosts = [];
-      // Show the expected shape only for strokes that went wrong, and only
-      // when asked for the full verdict — a ghost after every slip during
-      // live practice turns into tracing rather than recall.
-      if (full) {
-        for (var i = 0; i < r.v.length; i++) {
-          var ri = r.refOf[i];
-          if (r.v[i] !== 'ok' && ri >= 0) {
-            cell.ghosts.push(applyXf(refs[ri], r.xf));
-          }
+      for (var i = 0; i < r.v.length; i++) {
+        var ri = r.refOf[i];
+        if (r.v[i] !== 'ok' && ri >= 0) {
+          cell.ghosts.push(applyXf(refs[ri], r.xf));
         }
       }
       cell.checked = true;

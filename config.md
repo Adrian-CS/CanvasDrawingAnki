@@ -93,14 +93,25 @@ live and that choice, like Keep / Fresh, overrides this default on that
 device until changed again.
 
 **`check_mode`** *(string, default `"live"`)*
-- `"live"` — every stroke is judged the moment you lift the pen, and the
-  ones that went wrong turn red or amber as you write.
+- `"live"` — every stroke is judged the moment you lift the pen.
 - `"manual"` — nothing is judged until you press **Check**, so you can
-  write the whole character undisturbed. The expected shape of each wrong
-  stroke is then drawn over your writing as a dashed outline.
+  write the whole character undisturbed.
 
-Either way the answer side always shows the full verdict for what you
-wrote on the question side.
+Either way, a stroke that went wrong turns red or amber and the shape it
+should have had is drawn over your writing as a dashed outline, so there is
+always something to correct towards. And either way the answer side shows
+the full verdict for what you wrote on the question side.
+
+The verdict names the mistake rather than just calling the stroke wrong:
+
+| | |
+|---|---|
+| *out of order* | the right stroke, drawn too early |
+| *drawn backwards* | the right stroke, drawn end to start |
+| *right shape, wrong place* | the shape is right, it is not where it belongs |
+| *wrong length* | the right shape, far too long or too short |
+| *wrong shape* | not that stroke |
+| *extra stroke* | more strokes than the character has |
 
 **`check_tolerance`** *(number, default `1.0`)*
 Multiplies how far a stroke may sit from its reference shape before it
@@ -122,6 +133,19 @@ their own below them instead of being repeated under each canvas.
 
 A field holding a whole sentence would fill the card with canvases, so at
 most eight characters are taken; the rest are left out.
+
+**How big you write is not a mistake**
+
+Almost nobody writes filling the em box the reference fonts use, so the
+canvas works out the size and position you actually write at, from the
+character in front of it, and judges the strokes in that frame. That
+measurement needs a few strokes to exist, so it also remembers the last one
+per device — without which the opening strokes of every character would be
+compared against a full-size reference, and anyone writing smaller than the
+box would be told their first two strokes were wrong every single time.
+
+On the very first character checked on a device there is nothing remembered
+yet, so until it is finished, its strokes are judged on their shape alone.
 
 Some limits are worth knowing about:
 
