@@ -114,8 +114,9 @@ function makeCtx() {
   const noop = () => {};
   return {
     ops,
-    save: noop, restore: noop, beginPath: noop, moveTo: noop, lineTo: noop,
-    fillRect: noop,
+    save: noop, restore: noop, beginPath: noop, fillRect: noop,
+    moveTo: (x, y) => ops.push(['pt', x, y]),
+    lineTo: (x, y) => ops.push(['pt', x, y]),
     stroke: () => ops.push(['stroke']),
     clearRect: () => ops.push(['clearRect']),
     setLineDash: (d) => ops.push(['setLineDash', (d || []).join(',')]),
@@ -124,13 +125,36 @@ function makeCtx() {
 
 const GHOST_DASH = '6,5';
 
-/** How many expected-stroke outlines the canvas currently shows. */
-function ghostsDrawn(canvas) {
+/** The canvas as it currently stands: everything painted since the last
+ *  clearRect, with the dash pattern in force at the time. */
+function lastFrame(canvas) {
   const ops = canvas.getContext().ops;
   let from = 0;
   ops.forEach((op, i) => { if (op[0] === 'clearRect') { from = i; } });
-  return ops.slice(from).filter(
+  return ops.slice(from);
+}
+
+/** How many expected-stroke outlines the canvas currently shows. */
+function ghostsDrawn(canvas) {
+  return lastFrame(canvas).filter(
     (op) => op[0] === 'setLineDash' && op[1] === GHOST_DASH).length;
+}
+
+/** The bounding box of those outlines, to check they are drawn over the
+ *  writing rather than at the size of the reference font's em box. */
+function ghostBox(canvas) {
+  let dash = '';
+  const pts = [];
+  lastFrame(canvas).forEach((op) => {
+    if (op[0] === 'setLineDash') { dash = op[1]; }
+    if (op[0] === 'pt' && dash === GHOST_DASH) { pts.push({ x: op[1], y: op[2] }); }
+  });
+  if (!pts.length) { return null; }
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const y0 = Math.min(...ys), y1 = Math.max(...ys);
+  return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2,
+           span: Math.max(x1 - x0, y1 - y0) };
 }
 
 /** Build a fresh global environment with one card rendered in it. */
@@ -223,5 +247,5 @@ function drawStroke(canvas, pts) {
 
 module.exports = {
   extractCanvasJs, loadStrokeData, referenceStrokes,
-  makeEnv, runCard, drawStroke, cellsOf, ghostsDrawn,
+  makeEnv, runCard, drawStroke, cellsOf, ghostsDrawn, ghostBox,
 };

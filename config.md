@@ -136,16 +136,23 @@ most eight characters are taken; the rest are left out.
 
 **How big you write is not a mistake**
 
-Almost nobody writes filling the em box the reference fonts use, so the
-canvas works out the size and position you actually write at, from the
-character in front of it, and judges the strokes in that frame. That
-measurement needs a few strokes to exist, so it also remembers the last one
-per device — without which the opening strokes of every character would be
-compared against a full-size reference, and anyone writing smaller than the
-box would be told their first two strokes were wrong every single time.
+Almost nobody fills the em box the reference fonts use, so the canvas works
+out the size and position you are actually writing at and judges the strokes
+in that frame — from the first stroke onwards, and down to about 40% of the
+box. It also remembers the last measurement per device, so a character
+starts out in the frame you have been writing in rather than assuming you
+fill the box.
 
-On the very first character checked on a device there is nothing remembered
-yet, so until it is finished, its strokes are judged on their shape alone.
+While a character is unfinished that frame is fitted to what you have drawn
+so far, which is what stops a small character being called wrong before
+there is enough of it to measure. Once the character is finished it is
+judged in the frame its own box implies: allowing the size and position to
+float freely at that point would also let it absorb part of what separates
+土 from 士.
+
+The dashed outline of an expected stroke is drawn in that same frame, so it
+lands on top of your writing at your size instead of floating at the
+reference font's.
 
 Some limits are worth knowing about:
 
