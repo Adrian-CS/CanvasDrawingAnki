@@ -495,10 +495,47 @@ _CANVAS_JS = r"""(function () {
     var span = Math.max(db.w, db.h), rspan = Math.max(rb.w, rb.h);
     if (span < SZ * 0.2 || rspan < SZ * 0.2) { return IDENTITY; }
     var s = span / rspan;
-    if (s < 0.45 || s > 2.0) { return IDENTITY; }
+    // The same bounds the least-squares fit uses, so a character written at
+    // 40% of the box is still measurable once it is finished.
+    if (s < 0.35 || s > 2.2) { return IDENTITY; }
     return { s: s,
              dx: (db.x0 + db.x1) / 2 - (rb.x0 + rb.x1) / 2 * s,
              dy: (db.y0 + db.y1) / 2 - (rb.y0 + rb.y1) / 2 * s };
+  }
+
+  /* The frame that best maps the reference onto what has actually been
+     drawn, by least squares over corresponding points — uniform scale and
+     offset, no rotation. Unlike a bounding-box ratio this works from the
+     very first stroke, which is what lets someone who writes at half size
+     be judged on the character they are writing rather than on how much of
+     the box they fill. It assumes the strokes drawn so far are the first
+     ones of the character; when they are not, the frame simply fits badly
+     and loses to another candidate. */
+  function similarityFit(drawnList, refList) {
+    var n = Math.min(drawnList.length, refList.length);
+    if (!n) { return IDENTITY; }
+    var A = [], B = [], i, k;
+    for (i = 0; i < n; i++) {
+      var a = resample(drawnList[i], NRS), b = resample(refList[i], NRS);
+      for (k = 0; k < NRS; k++) { A.push(a[k]); B.push(b[k]); }
+    }
+    var ax = 0, ay = 0, bx = 0, by = 0;
+    for (i = 0; i < A.length; i++) {
+      ax += A[i].x; ay += A[i].y; bx += B[i].x; by += B[i].y;
+    }
+    ax /= A.length; ay /= A.length; bx /= B.length; by /= B.length;
+    var num = 0, den = 0;
+    for (i = 0; i < A.length; i++) {
+      var dax = A[i].x - ax, day = A[i].y - ay;
+      var dbx = B[i].x - bx, dby = B[i].y - by;
+      num += dax * dbx + day * dby;
+      den += dbx * dbx + dby * dby;
+    }
+    // A reference that occupies a single point says nothing about scale.
+    if (den < SZ * SZ * 0.002) { return IDENTITY; }
+    var sc = num / den;
+    if (sc < 0.35 || sc > 2.2) { return IDENTITY; }
+    return { s: sc, dx: ax - bx * sc, dy: ay - by * sc };
   }
 
   function applyXf(pts, xf) {
@@ -601,12 +638,16 @@ _CANVAS_JS = r"""(function () {
   function evaluate(drawnList, refs, seed, noFrame) {
     var used = [], pairsD = [], pairsR = [], v = [], errs = [], refOf = [];
     var cost = 0, limit = MATCH_TH * TOL;
+    // The frame the verdicts were actually reached under, which is what the
+    // expected shapes have to be drawn in to sit on top of the writing.
+    var frame = IDENTITY;
     for (var i = 0; i < drawnList.length; i++) {
       // A seed measured from the drawing as a whole beats anything derived
       // from matches made so far, which would need the very alignment they
       // are supposed to produce; without one, grow the fit from confirmed
       // matches as they accumulate.
       var xf = seed || fitTransform(pairsD, pairsR);
+      frame = xf;
       var expected = -1, best = null;
       for (var j = 0; j < refs.length; j++) {
         if (used[j]) { continue; }
@@ -673,7 +714,8 @@ _CANVAS_JS = r"""(function () {
       }
     }
     var xfFinal = fitTransform(pairsD, pairsR);
-    return { v: v, errs: errs, xf: xfFinal, refOf: refOf, cost: cost,
+    return { v: v, errs: errs, xf: xfFinal, frame: frame, refOf: refOf,
+             cost: cost,
              ok: v.filter(function (x) { return x === 'ok'; }).length };
   }
 
@@ -903,10 +945,19 @@ _CANVAS_JS = r"""(function () {
          would otherwise never get a frame at all and so never be told
          apart. */
       var complete = cell.strokes.length >= refs.length;
-      var measured = fitTransform(
-        cell.strokes, refs.slice(0, Math.min(cell.strokes.length, refs.length)),
-        complete ? 2 : 3);
+      var prefix = refs.slice(0, Math.min(cell.strokes.length, refs.length));
+      var measured = fitTransform(cell.strokes, prefix, complete ? 2 : 3);
       if (measured !== IDENTITY) { frames.push(measured); }
+      /* Works from the first stroke, so a half-finished character written
+         small is judged on what is being written rather than on how much of
+         the box it fills. It is deliberately not offered once the character
+         is finished: with scale and position free, a uniform fit can absorb
+         part of what separates 土 from 士, and by then the drawing's own box
+         says what frame it is in without having to be that generous. */
+      if (!complete) {
+        var fitted = similarityFit(cell.strokes, prefix);
+        if (fitted !== IDENTITY) { frames.push(fitted); }
+      }
 
       /* No frame, and not enough drawing to measure one: the opening
          strokes of the first character this device ever checks. Judge the
@@ -940,7 +991,7 @@ _CANVAS_JS = r"""(function () {
       for (var i = 0; i < r.v.length; i++) {
         var ri = r.refOf[i];
         if (r.v[i] !== 'ok' && ri >= 0) {
-          cell.ghosts.push(applyXf(refs[ri], r.xf));
+          cell.ghosts.push(applyXf(refs[ri], r.frame));
         }
       }
       cell.checked = true;

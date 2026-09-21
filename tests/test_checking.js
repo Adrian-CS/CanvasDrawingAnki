@@ -11,6 +11,7 @@
 
 const {
   loadStrokeData, referenceStrokes, makeEnv, runCard, drawStroke, ghostsDrawn,
+  ghostBox,
 } = require('./dom_stub');
 
 const SIZE = 300;
@@ -273,6 +274,31 @@ console.log('\nthe expected stroke is shown');
         'got: ' + ui.msg.textContent);
 }
 
+{
+  /* The outline has to be drawn in the same frame the strokes were judged
+     in. Drawn at the reference font's own size it floats away from small
+     writing — close enough to look like a bug, useless as a correction. */
+  const small = scale(0.5, 40, 40);
+  const strokes = small(referenceStrokes(DATA, '漢', SIZE));
+  strokes[3] = strokes[3].map((p) => ({ x: p.x - 25, y: p.y + 35 }));
+  const env = makeEnv({ expected: '漢', strokeData: DATA, size: SIZE });
+  const ui = runCard(env);
+  strokes.slice(0, 4).forEach((s) => drawStroke(ui.canvas, s));
+  const box = ghostBox(ui.canvas);
+  const all = [].concat.apply([], strokes.slice(0, 4));
+  const wx = all.map((p) => p.x), wy = all.map((p) => p.y);
+  const writing = { x0: Math.min.apply(null, wx), x1: Math.max.apply(null, wx),
+                    y0: Math.min.apply(null, wy), y1: Math.max.apply(null, wy) };
+  const pad = SIZE * 0.1;
+  check('the outline is drawn over the writing, not at reference size',
+        !!box && box.cx > writing.x0 - pad && box.cx < writing.x1 + pad
+             && box.cy > writing.y0 - pad && box.cy < writing.y1 + pad,
+        box ? 'outline centre ' + Math.round(box.cx) + ',' + Math.round(box.cy)
+              + ' vs writing ' + Math.round(writing.x0) + '-' + Math.round(writing.x1)
+              + ',' + Math.round(writing.y0) + '-' + Math.round(writing.y1)
+            : 'no outline drawn');
+}
+
 // ── Writing smaller than the box ─────────────────────────────────────
 
 /* Alignment is measured from the drawing's own box, which does not exist
@@ -281,6 +307,24 @@ console.log('\nthe expected stroke is shown');
  * strokes are wrong, on every single character. */
 console.log('\nwriting smaller than the box');
 {
+  /* Someone writing at half the size of the box is not making a mistake,
+     and must not be told so from the first stroke — the complaint that
+     sent me looking at this. */
+  [0.8, 0.7, 0.6, 0.5, 0.4].forEach((factor) => {
+    const off = (SIZE - SIZE * factor) / 2;
+    const env = makeEnv({ expected: '日', strokeData: DATA, size: SIZE });
+    const ui = runCard(env);
+    const drawn = scale(factor, off, off)(referenceStrokes(DATA, '日', SIZE));
+    const flagged = [];
+    drawn.forEach((s, i) => {
+      drawStroke(ui.canvas, s);
+      if (/wrong|place|length|shape/.test(ui.msg.textContent)) { flagged.push(i + 1); }
+    });
+    check('writing at ' + Math.round(factor * 100) + '% of the box is accepted',
+          flagged.length === 0 && /^Correct/.test(ui.msg.textContent),
+          'flagged strokes ' + flagged.join(',') + ' — ' + ui.msg.textContent);
+  });
+
   const small = scale(0.7, 45, 45);
   const first = write('日', small);
   check('a finished character is measured and remembered',
