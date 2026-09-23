@@ -101,9 +101,12 @@ Lo que te dice, trazo a trazo:
 | línea bajo el canvas | el veredicto — `¡Correcto! Los 13 trazos`, `9 de 13 trazos correctos · trazo 4: fuera de orden`, `Faltan 1 trazo(s)` |
 
 Si el campo contiene una palabra en lugar de un solo carácter, obtienes un
-canvas por carácter, uno al lado del otro y cada uno comprobado contra el
-suyo — 図書館 da tres. Las lecturas furigana entre corchetes se ignoran, así
-que 漢字[かんじ] sigue dando dos canvas y no cinco.
+canvas por cada carácter que merece practicarse, uno al lado del otro y cada
+uno comprobado contra el suyo — 図書館 da tres. Los kana se apartan cuando el
+campo también tiene un kanji, así que 図りたい es un solo canvas para 図 y no
+cuatro; una palabra sin kanji, como ラーメン, sigue dando un canvas por kana.
+`canvas_characters` cambia esa regla. Las lecturas furigana entre corchetes
+se ignoran, así que 漢字[かんじ] sigue dando dos canvas y no cinco.
 
 Por defecto cada trazo se juzga al levantar el dedo. Pon `check_mode` en
 `"manual"` si prefieres escribir el carácter entero sin interrupciones y pulsar

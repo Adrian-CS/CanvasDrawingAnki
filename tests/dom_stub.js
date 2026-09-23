@@ -161,7 +161,8 @@ function ghostBox(canvas) {
 function makeEnv(opts) {
   const o = Object.assign({
     size: 300, expected: '', isBack: false, check: '1',
-    checkMode: 'live', tol: '1', lang: 'en', body: '<div>card</div>',
+    checkMode: 'live', tol: '1', chars: 'auto', lang: 'en',
+    body: '<div>card</div>',
     strokeData: null, storage: {},
   }, opts);
 
@@ -178,7 +179,7 @@ function makeEnv(opts) {
     size: String(o.size), grid: 'tian', sw: '3', sc: '#1a1a1a',
     gc: '#aaaaaa', bg: '#ffffff', persist: '1', restore: '1',
     keepWindow: '90', check: o.check, checkMode: o.checkMode,
-    tol: o.tol, lang: o.lang,
+    tol: o.tol, chars: o.chars, lang: o.lang,
   });
   if (o.expected) {
     const span = new Element('span', doc);

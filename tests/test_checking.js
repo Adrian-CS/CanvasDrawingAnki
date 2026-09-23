@@ -483,14 +483,47 @@ function writeWord(field, written, opts) {
         'got: ' + ui.cells.map((c) => c.msg.textContent).join(' | '));
 }
 {
-  const { ui } = writeWord('食べる', ['食', 'べ', 'る']);
-  check('kana get canvases and references too',
+  /* Which characters are worth a canvas. On a vocabulary card the kana are
+     usually okurigana or particles — a card about 図 should not also ask
+     for り, た and い — so kana step aside when there is a kanji, and stand
+     in for it when there is none. */
+  const cells = (field, chars) => {
+    const env = makeEnv(Object.assign(
+      { expected: field, strokeData: DATA, size: SIZE },
+      chars ? { chars } : {}));
+    return runCard(env).cells;
+  };
+  check('okurigana does not get its own canvas',
+        cells('図りたい').length === 1, 'got ' + cells('図りたい').length);
+  check('a word of two kanji still gets both',
+        cells('図書').length === 2, 'got ' + cells('図書').length);
+  check('a kana-only card still gets its canvases',
+        cells('ラーメン').length === 4, 'got ' + cells('ラーメン').length);
+  check('and they are still checked',
+        cells('ラーメン')[0].msg !== null);
+  check('a single kana is still checked',
+        cells('あ').length === 1);
+  check('the iteration mark 々 counts as a character',
+        cells('時々').length === 2, 'got ' + cells('時々').length);
+  check('punctuation in the kana block gets no canvas',
+        cells('ア・イ').length === 2, 'got ' + cells('ア・イ').length);
+  check('"all" keeps a canvas for every character',
+        cells('食べる', 'all').length === 3, 'got ' + cells('食べる', 'all').length);
+  check('"kanji" never draws kana',
+        cells('食べる', 'kanji').length === 1, 'got ' + cells('食べる', 'kanji').length);
+  check('"kanji" on a kana-only field leaves a plain canvas',
+        cells('ラーメン', 'kanji').length === 1);
+}
+{
+  const { ui } = writeWord('食べる', ['食', 'べ', 'る'], { chars: 'all' });
+  check('kana canvases check against kana references',
         ui.cells.length === 3
           && ui.cells.every((c) => /^Correct/.test(c.msg.textContent)),
         'got: ' + ui.cells.map((c) => c.msg.textContent).join(' | '));
 }
 {
-  const env = makeEnv({ expected: '今日は良い天気ですね今日も', strokeData: DATA,
+  // Ten kanji in the field, eight canvases at most.
+  const env = makeEnv({ expected: '一二三四五六七八九十', strokeData: DATA,
                         size: SIZE });
   const ui = runCard(env);
   check('a sentence is capped at eight canvases', ui.cells.length === 8,

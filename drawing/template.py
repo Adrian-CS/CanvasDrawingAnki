@@ -140,17 +140,32 @@ _CANVAS_JS = r"""(function () {
   /* The characters to check against, rendered into a hidden span inside
      the anchor by the note field chosen in the dialog. A field often holds
      more than the one character — a whole word, or a word with its reading
-     attached — so every CJK ideograph and kana in it gets its own canvas,
-     in order. Furigana readings in square brackets are dropped first: in
-     a field holding 漢字[かんじ] the reading is not something to write.
-     The surrogate-pair branch covers characters above the BMP. */
-  var CJK_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]|[\ud840-\ud87f][\udc00-\udfff]/g;
+     attached — so each character in it can get its own canvas, in order.
+     Furigana readings in square brackets are dropped first: in a field
+     holding 図り[はか]たい the reading is not something to write. The
+     surrogate-pair branch covers characters above the BMP.
+     Punctuation that lives in the kana block (・ and ゠) is left out; the
+     iteration mark 々 is not, since it is written like any other. */
+  var KANJI_RE = /[\u3005\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]|[\ud840-\ud87f][\udc00-\udfff]/;
+  var WRITABLE_RE = /[\u3005\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]|[\ud840-\ud87f][\udc00-\udfff]/g;
   // A field holding a whole sentence would otherwise fill the card with
   // canvases; past this many, the rest are left out.
   var MAX_CELLS = 8;
   var _expEl  = document.getElementById('kda-expected');
   var _expTxt = _expEl ? (_expEl.textContent || '').replace(/\[[^\]]*\]/g, ' ') : '';
-  var TARGETS = _expTxt.match(CJK_RE) || [];
+  var _found  = _expTxt.match(WRITABLE_RE) || [];
+  var _kanji  = _found.filter(function (c) { return KANJI_RE.test(c); });
+
+  /* Which of them are worth a canvas. On a vocabulary card the kana are
+     usually okurigana or particles — 図りたい is a card about 図, and
+     practising り, た and い alongside it is three canvases of noise. So by
+     default the kana step aside when there is a kanji to practise, and
+     stand in for it when there is not, which leaves a kana-only card
+     working as before. 'kanji' never draws kana; 'all' always does. */
+  var CHARS = d.chars === 'all' ? 'all' : (d.chars === 'kanji' ? 'kanji' : 'auto');
+  var TARGETS = CHARS === 'all' ? _found
+              : CHARS === 'kanji' ? _kanji
+              : (_kanji.length ? _kanji : _found);
   if (TARGETS.length > MAX_CELLS) { TARGETS = TARGETS.slice(0, MAX_CELLS); }
   // With nothing to check against there is still one canvas to draw on.
   var NCELLS = Math.max(1, TARGETS.length);
@@ -1252,6 +1267,9 @@ def build_block(cfg: dict, expected_field: str | None = None) -> str:
     check   = "1" if cfg.get("check_strokes", False) else "0"
     mode    = "manual" if cfg.get("check_mode") == "manual" else "live"
     tol     = cfg.get("check_tolerance", 1.0)
+    chars   = cfg.get("canvas_characters", "auto")
+    if chars not in ("auto", "kanji", "all"):
+        chars = "auto"
     lang    = _detect_lang()
 
     # The expected character rides along as the field's rendered text rather
@@ -1274,7 +1292,7 @@ def build_block(cfg: dict, expected_field: str | None = None) -> str:
         f'data-persist="{persist}" data-restore="{restore}" '
         f'data-keep-window="{keep_window}" '
         f'data-check="{check}" data-check-mode="{mode}" '
-        f'data-tol="{tol}" '
+        f'data-tol="{tol}" data-chars="{chars}" '
         f'data-expected-field="{escape(expected_field or "", quote=True)}" '
         f'data-lang="{lang}">{expected}</div>'
     )
