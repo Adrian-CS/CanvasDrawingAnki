@@ -97,9 +97,12 @@ What it tells you, per stroke:
 | line below the canvas | the verdict — `Correct — all 13 strokes`, `9 of 13 strokes correct · stroke 4: out of order`, `1 stroke(s) missing` |
 
 If the field holds a word rather than a single character, you get one
-canvas per character, side by side and each checked against its own
-character — 図書館 gives three. Furigana readings in brackets are ignored,
-so 漢字[かんじ] still gives two canvases and not five.
+canvas per character worth practising, side by side and each checked against
+its own character — 図書館 gives three. Kana step aside when the field also
+holds a kanji, so 図りたい is one canvas for 図 rather than four; a word with
+no kanji in it, like ラーメン, still gets one canvas per kana.
+`canvas_characters` changes that rule. Furigana readings in brackets are
+ignored, so 漢字[かんじ] still gives two canvases and not five.
 
 By default each stroke is judged as you lift the pen. Set `check_mode` to
 `"manual"` if you would rather write the whole character undisturbed and

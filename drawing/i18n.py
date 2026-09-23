@@ -20,7 +20,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "check_field_hint": (
             "Pick the field holding the character being practised. The canvas "
             "then compares each stroke against its reference shape, order and "
-            "direction. A field holding a word gets one canvas per character. "
+            "direction. A field holding a word gets one canvas per kanji in it. "
             "Applies to templates added from now on."
         ),
         "check_on_field": "checking: {field}",
@@ -53,7 +53,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "Elige el campo que contiene el carácter que estás practicando. El "
             "canvas comparará cada trazo con su forma, orden y dirección de "
             "referencia. Si el campo contiene una palabra, se añade un canvas "
-            "por carácter. Se aplica a las plantillas que añadas a partir de ahora."
+            "por cada kanji. Se aplica a las plantillas que añadas a partir de ahora."
         ),
         "check_on_field": "comprobando: {field}",
         "check_no_data": (
@@ -83,7 +83,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "check_field_none": "— 照合しない —",
         "check_field_hint": (
             "練習する文字が入っているフィールドを選んでください。キャンバスが各筆画を"
-            "手本の形・筆順・方向と照合します。単語が入っている場合は1文字につき1つ"
+            "手本の形・筆順・方向と照合します。単語が入っている場合は漢字ごとに1つ"
             "キャンバスが並びます。これ以降に追加するテンプレートに適用されます。"
         ),
         "check_on_field": "照合: {field}",

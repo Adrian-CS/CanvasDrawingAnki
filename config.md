@@ -123,16 +123,29 @@ stricter standard.
 
 **More than one character**
 
-A field holding a word gets one canvas per character, side by side in
-writing order, each checked against its own character: 図書館 gives three,
-食べる gives three (KanjiVG covers kana too). Furigana readings in square
-brackets are ignored, so a field holding 漢字[かんじ] still gives two
-canvases and not five. The canvases share the width and wrap onto another
-line when they no longer fit, and the preference buttons move to a row of
-their own below them instead of being repeated under each canvas.
+A field holding a word gets one canvas per character worth practising, side
+by side in writing order, each checked against its own character: 図書館
+gives three. Furigana readings in square brackets are ignored, so a field
+holding 漢字[かんじ] still gives two canvases and not five. The canvases
+share the width and wrap onto another line when they no longer fit, and the
+preference buttons move to a row of their own below them instead of being
+repeated under each canvas.
 
 A field holding a whole sentence would fill the card with canvases, so at
 most eight characters are taken; the rest are left out.
+
+**`canvas_characters`** *(string, default `"auto"`)*
+Which characters in the field get a canvas.
+- `"auto"` — kana step aside when the field also holds a kanji, and stand in
+  for it when it does not. 図りたい is a card about 図, so it gets one
+  canvas rather than four; ラーメン, with no kanji in it, still gets four.
+- `"kanji"` — never a canvas for kana, even on a kana-only card (which then
+  gets a plain canvas with no checking).
+- `"all"` — one canvas per character, kana included. This was the behaviour
+  before `canvas_characters` existed.
+
+Punctuation that lives in the kana block (・ and ゠) never gets a canvas;
+the iteration mark 々 does, since it is written like any other character.
 
 **How big you write is not a mistake**
 
