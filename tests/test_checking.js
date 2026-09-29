@@ -11,7 +11,7 @@
 
 const {
   loadStrokeData, referenceStrokes, makeEnv, runCard, drawStroke, ghostsDrawn,
-  ghostBox,
+  ghostBox, strokeColours,
 } = require('./dom_stub');
 
 const SIZE = 300;
@@ -345,6 +345,132 @@ console.log('\nwriting smaller than the box');
   strokes.slice(1).forEach((s) => drawStroke(ui.canvas, s));
   check('and the whole character is accepted',
         /^Correct/.test(ui.msg.textContent), 'got: ' + ui.msg.textContent);
+}
+
+// ── Guided practice ──────────────────────────────────────────────────
+
+/* One stroke at a time: a stroke that is not the one due is rubbed out and
+ * retried, an accepted one is replaced by the reference stroke. Nothing
+ * here has to work out how big the writing is, which is the whole point —
+ * the strokes already on the canvas say where the character sits. */
+console.log('\nguided practice');
+{
+  const guided = (char, opts) => {
+    const env = makeEnv(Object.assign(
+      { expected: char, strokeData: DATA, size: SIZE, checkMode: 'guided' },
+      opts || {}));
+    const ui = runCard(env);
+    return { env, ui, refs: referenceStrokes(DATA, char, SIZE) };
+  };
+  const wrongStroke = [{ x: 30, y: 280 }, { x: 270, y: 265 }];
+
+  {
+    const g = guided('日');
+    check('the canvas starts empty and knows the total',
+          /0\/4/.test(g.ui.counter.textContent), 'got: ' + g.ui.counter.textContent);
+    g.refs.forEach((s) => drawStroke(g.ui.canvas, s));
+    check('writing it correctly completes the character',
+          /^Correct/.test(g.ui.msg.textContent), 'got: ' + g.ui.msg.textContent);
+    check('and every stroke counts as earned',
+          strokeColours(g.ui.canvas).every((c) => c === '#1a1a1a'),
+          'got: ' + strokeColours(g.ui.canvas).join(' '));
+  }
+  {
+    /* The character is being built on the canvas at its own size, so half
+       of it is out of place rather than merely small. Nothing here has to
+       infer how big the writing is — which is the point — but it does mean
+       guided practice asks you to write where the character goes. */
+    const g = guided('日');
+    g.refs.forEach((s) => drawStroke(g.ui.canvas,
+      s.map((p) => ({ x: p.x * 0.5 + 60, y: p.y * 0.5 + 60 }))));
+    check('writing much smaller than the character is not accepted',
+          !/4\/4/.test(g.ui.counter.textContent)
+            && /try again/.test(g.ui.msg.textContent),
+          'got: ' + g.ui.counter.textContent + ' — ' + g.ui.msg.textContent);
+  }
+  {
+    const g = guided('日');
+    drawStroke(g.ui.canvas, wrongStroke);
+    check('a stroke that is not the one due is not accepted',
+          /0\/4/.test(g.ui.counter.textContent), 'got: ' + g.ui.counter.textContent);
+    check('and it says to try again',
+          /try again/.test(g.ui.msg.textContent), 'got: ' + g.ui.msg.textContent);
+    drawStroke(g.ui.canvas, g.refs[0]);
+    check('the right stroke then goes in',
+          /1\/4/.test(g.ui.counter.textContent), 'got: ' + g.ui.counter.textContent);
+  }
+  {
+    // Drawing a stroke that belongs later is the mistake this exists for.
+    const g = guided('漢');
+    drawStroke(g.ui.canvas, g.refs[6]);
+    check('a stroke drawn too early is named as such',
+          /comes later/.test(g.ui.msg.textContent), 'got: ' + g.ui.msg.textContent);
+  }
+  {
+    const g = guided('日', { hintAfter: '2', acceptAfter: '3' });
+    drawStroke(g.ui.canvas, wrongStroke);
+    drawStroke(g.ui.canvas, wrongStroke);
+    check('after enough misses it offers to show the stroke',
+          /watch/.test(g.ui.msg.textContent) || /try again/.test(g.ui.msg.textContent),
+          'got: ' + g.ui.msg.textContent);
+    drawStroke(g.ui.canvas, wrongStroke);
+    check('and eventually gives the stroke rather than trapping you',
+          /1\/4/.test(g.ui.counter.textContent), 'got: ' + g.ui.counter.textContent);
+    check('the given stroke is marked as not earned',
+          strokeColours(g.ui.canvas)[0] === '#e08e0b',
+          'got: ' + strokeColours(g.ui.canvas).join(' '));
+  }
+  {
+    const g = guided('日', { acceptAfter: '2', hintAfter: '1' });
+    [0, 1, 2, 3].forEach(() => drawStroke(g.ui.canvas, wrongStroke));
+    [0, 1, 2, 3].forEach(() => drawStroke(g.ui.canvas, wrongStroke));
+    check('a character finished on given strokes is not called correct',
+          !/^Correct/.test(g.ui.msg.textContent) && /of 4/.test(g.ui.msg.textContent),
+          'got: ' + g.ui.msg.textContent);
+  }
+  {
+    // The flip has to carry the result, not just the strokes: the strokes
+    // are the reference's own, so re-checking them would say it was perfect.
+    const g = guided('日', { acceptAfter: '2', hintAfter: '1' });
+    drawStroke(g.ui.canvas, wrongStroke);
+    drawStroke(g.ui.canvas, wrongStroke);
+    g.refs.slice(1).forEach((s) => drawStroke(g.ui.canvas, s));
+    const back = makeEnv({ expected: '日', strokeData: DATA, size: SIZE,
+                           checkMode: 'guided', isBack: true,
+                           storage: g.env.store });
+    const ui = runCard(back);
+    check('the answer side remembers which stroke was given',
+          strokeColours(ui.canvas)[0] === '#e08e0b',
+          'got: ' + strokeColours(ui.canvas).join(' '));
+    check('and does not report it as flawless',
+          !/^Correct/.test(ui.cells[0].msg.textContent),
+          'got: ' + ui.cells[0].msg.textContent);
+  }
+  {
+    const g = guided('日');
+    g.refs.slice(0, 2).forEach((s) => drawStroke(g.ui.canvas, s));
+    const bar = g.env.doc.getElementById('kda-bar-0');
+    bar.children.find((c) => c.textContent === 'Undo')._fire('click', {});
+    check('Undo steps back to the stroke it removed',
+          /1\/4/.test(g.ui.counter.textContent), 'got: ' + g.ui.counter.textContent);
+    drawStroke(g.ui.canvas, g.refs[1]);
+    check('and that stroke can be written again',
+          /2\/4/.test(g.ui.counter.textContent), 'got: ' + g.ui.counter.textContent);
+  }
+  {
+    const g = guided('日');
+    const bar = g.env.doc.getElementById('kda-bar-0');
+    check('guided practice offers a hint button',
+          !!bar.children.find((c) => c.textContent === '👁'));
+  }
+  {
+    const env = makeEnv({ expected: '日', strokeData: DATA, size: SIZE });
+    const ui = runCard(env);
+    const bar = env.doc.getElementById('kda-bar-0');
+    const hint = bar.children.find((c) => c.textContent === '👁');
+    check('and free drawing does not show it',
+          !hint || hint.style.display === 'none');
+  }
 }
 
 // ── Modes and opt-out ────────────────────────────────────────────────

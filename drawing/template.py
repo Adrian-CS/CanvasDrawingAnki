@@ -54,6 +54,11 @@ _CANVAS_JS = r"""(function () {
           eRev: 'stroke {i}: drawn backwards',
           okStroke: 'stroke {i} ✓',
           more: 'and {n} more',
+          gLater: 'stroke {i}: that one comes later',
+          gRetry: 'stroke {i}: try again',
+          gWatch: 'stroke {i}: watch, then copy it',
+          gForced: 'stroke {i}: moving on',
+          hint: 'Show me this stroke',
           noData: 'Stroke data not found — see the add-on docs',
           noChar: 'No reference for {c}' },
     es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos', yourWriting: '✎ Tu escritura',
@@ -71,6 +76,11 @@ _CANVAS_JS = r"""(function () {
           eRev: 'trazo {i}: dirección invertida',
           okStroke: 'trazo {i} ✓',
           more: 'y {n} más',
+          gLater: 'trazo {i}: ese va después',
+          gRetry: 'trazo {i}: inténtalo otra vez',
+          gWatch: 'trazo {i}: míralo y cópialo',
+          gForced: 'trazo {i}: seguimos',
+          hint: 'Enséñame este trazo',
           noData: 'No se encontraron los datos de trazos — consulta la documentación',
           noChar: 'No hay referencia para {c}' },
     ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数', yourWriting: '✎ あなたの字',
@@ -88,6 +98,11 @@ _CANVAS_JS = r"""(function () {
           eRev: '{i}画目: 方向が逆です',
           okStroke: '{i}画目 ✓',
           more: 'ほか{n}件',
+          gLater: '{i}画目: それはもっと後の画です',
+          gRetry: '{i}画目: もう一度',
+          gWatch: '{i}画目: 手本を見てなぞってください',
+          gForced: '{i}画目: 次へ進みます',
+          hint: 'この画を見せる',
           noData: '筆画データが見つかりません — アドオンの説明を参照',
           noChar: '{c} の参照データがありません' }
   };
@@ -109,9 +124,17 @@ _CANVAS_JS = r"""(function () {
   var _lsCheckVal;
   try { _lsCheckVal = localStorage.getItem(_LS_KEY_CHECK); } catch(e) { _lsCheckVal = null; }
   var CHECK = (_lsCheckVal !== null) ? (_lsCheckVal === '1') : (d.check === '1');
-  // 'live' judges each stroke as it is finished; 'manual' waits for the
-  // Check button so the whole character can be written undisturbed.
-  var CHECK_MODE = d.checkMode === 'manual' ? 'manual' : 'live';
+  /* 'live' judges each stroke as it is finished; 'manual' waits for the
+     Check button so the whole character can be written undisturbed;
+     'guided' takes one stroke at a time and will not move on until that
+     stroke is right, replacing it with the reference stroke as it goes. */
+  var CHECK_MODE = (d.checkMode === 'manual' || d.checkMode === 'guided')
+    ? d.checkMode : 'live';
+  var GUIDED = CHECK_MODE === 'guided';
+  // Misses on one stroke before it is demonstrated, and before it is given
+  // to you so a single stroke cannot trap you on the card.
+  var HINT_AFTER = Math.max(1, parseInt(d.hintAfter, 10) || 3);
+  var ACCEPT_AFTER = Math.max(HINT_AFTER + 1, parseInt(d.acceptAfter, 10) || 5);
   // Multiplies every matching threshold — >1 is more forgiving.
   var TOL = parseFloat(d.tol) || 1;
 
@@ -246,6 +269,18 @@ _CANVAS_JS = r"""(function () {
     if (first && first.length && !Array.isArray(first[0])) { return [raw]; }
     return raw;
   }
+
+  /* A canvas is stored either as its bare stroke list, or — once guided
+     practice has judged those strokes — as { s: strokes, v: verdicts }, so
+     the answer side can report what actually happened. The strokes it
+     holds are the reference's own by then, and re-checking them would say
+     the character was flawless however many tries each stroke took. */
+  function _cellStrokes(entry) {
+    return (entry && !Array.isArray(entry) && entry.s) ? entry.s : (entry || []);
+  }
+  function _cellVerdicts(entry) {
+    return (entry && !Array.isArray(entry) && entry.v) ? entry.v : null;
+  }
   function _readPerCard() {
     var raw;
     try { raw = JSON.parse(localStorage.getItem(_PERCARD_KEY) || 'null'); } catch(e) { raw = null; }
@@ -260,7 +295,9 @@ _CANVAS_JS = r"""(function () {
      window past the point the card was last drawn on. */
   function saveAll() {
     if (IS_BACK) { return; }
-    var all = cells.map(function (c) { return c.strokes; });
+    var all = cells.map(function (c) {
+      return GUIDED ? { s: c.strokes, v: c.verdicts } : c.strokes;
+    });
     try { localStorage.setItem(_LAST_KEY, JSON.stringify(all)); } catch(e) {}
     try {
       localStorage.setItem(_PERCARD_KEY, JSON.stringify({ t: Date.now(), s: all }));
@@ -601,7 +638,8 @@ _CANVAS_JS = r"""(function () {
   // calling those backwards would be noise.
   var REV_RATIO = 0.6;
 
-  var VERDICT_COLORS = { bad: '#d9534f', order: '#e08e0b', rev: '#e08e0b' };
+  var VERDICT_COLORS = { bad: '#d9534f', order: '#e08e0b', rev: '#e08e0b',
+                         forced: '#e08e0b' };
   // How many individual mistakes the verdict line spells out before it
   // just counts the rest.
   var MAX_ERRS = 3;
@@ -778,11 +816,15 @@ _CANVAS_JS = r"""(function () {
      preference toggles, storage) stays outside, so the settings bar is
      not repeated N times. With one character this builds exactly the
      single canvas the add-on has always had. ─────────────────────────── */
-  function makeCell(index, target, initialStrokes) {
+  function makeCell(index, target, initialStrokes, initialVerdicts) {
     var cell = {
       index: index, target: target || '',
-      strokes: initialStrokes || [], verdicts: [], ghosts: [],
-      refs: null, checked: false,
+      strokes: initialStrokes || [], verdicts: initialVerdicts || [],
+      ghosts: [], refs: null, checked: false,
+      // Guided practice: how far through the character we are, how many
+      // times the stroke that is due has been missed, and a stroke that
+      // just missed and is still on screen.
+      expect: (initialStrokes || []).length, misses: 0, reject: null,
     };
     var cur = [], dn = false;
 
@@ -826,19 +868,31 @@ _CANVAS_JS = r"""(function () {
     var btnSize = NCELLS === 1 ? 'kda-primary' : 'kda-settings';
     var clrBtn = mkBtn(L.clear, function () {
       cell.strokes = []; cell.verdicts = []; cell.ghosts = [];
-      cell.checked = false;
+      cell.checked = false; cell.expect = 0; cell.misses = 0; cell.reject = null;
       say(''); redraw(); tick();
     });
     clrBtn.classList.add(btnSize);
     var undBtn = mkBtn(L.undo, function () {
       if (!cell.strokes.length) { return; }
       cell.strokes.pop(); cell.verdicts.pop(); cell.ghosts = [];
-      redraw(); tick();
+      // Guided practice steps back to that stroke rather than leaving a
+      // gap in the character.
+      if (cell.expect > 0) { cell.expect -= 1; }
+      cell.misses = 0; cell.reject = null;
+      say(''); redraw(); tick();
     });
     undBtn.classList.add(btnSize);
 
+    /* Asking to be shown the stroke should not require failing at it
+       three times first, so the same demonstration is a button. */
+    var hintBtn = mkBtn('👁', function () { showHint(); });
+    hintBtn.classList.add(btnSize);
+    hintBtn.title = L.hint;
+    if (!GUIDED) { hintBtn.style.display = 'none'; }
+
     bar.appendChild(clrBtn);
     bar.appendChild(undBtn);
+    bar.appendChild(hintBtn);
     bar.appendChild(ctr);
     outer.appendChild(cvs);
     outer.appendChild(bar);
@@ -892,11 +946,17 @@ _CANVAS_JS = r"""(function () {
       cell.strokes.forEach(function (pts, i) {
         paintStroke(pts, VERDICT_COLORS[cell.verdicts[i]] || SC);
       });
+      // In guided practice a stroke that missed is shown in red for a
+      // moment before it is rubbed out.
+      if (cell.reject) { paintStroke(cell.reject, VERDICT_COLORS.bad); }
     }
 
     function tick() {
-      ctr.textContent = cell.strokes.length
-        ? L.strokes + ': ' + cell.strokes.length : '';
+      // Guided practice counts towards a known total, which doubles as a
+      // progress indicator; free drawing just counts what was drawn.
+      ctr.textContent = (GUIDED && cell.refs)
+        ? L.strokes + ': ' + cell.strokes.length + '/' + cell.refs.length
+        : (cell.strokes.length ? L.strokes + ': ' + cell.strokes.length : '');
       undBtn.disabled = !cell.strokes.length;
       clrBtn.disabled = !cell.strokes.length;
       saveAll();
@@ -1030,11 +1090,163 @@ _CANVAS_JS = r"""(function () {
     // stroke right away; in manual mode it only drops an already-shown
     // verdict, so drawing after checking doesn't leave a stale message.
     function afterStroke() {
-      if (!CHECK || !cell.target) { return; }
+      if (!CHECK || !cell.target || GUIDED) { return; }
       if (CHECK_MODE === 'live') {
         withRefs(function (ok) { if (ok) { runCheck(false); } });
       } else if (cell.checked) {
         clearVerdict();
+      }
+    }
+
+
+    /* ══ Guided practice ═══════════════════════════════════════════════
+       One stroke at a time. A stroke that is not the one due is rejected
+       and rubbed out — you try it again — and a stroke that is accepted is
+       replaced by the reference stroke, so the character assembles itself
+       at the size and place it belongs. That is what removes the guessing
+       about scale: nothing here has to work out how big you write, because
+       the strokes already on the canvas say where the character sits. The
+       loop follows hanzi-writer's, which is the one these writing apps
+       have settled on. ─────────────────────────────────────────────── */
+
+    /* Only the stroke that is due is in play, so the tolerance can be far
+       wider than when a stroke has to be told apart from every other one
+       in the character. The first stroke is looser still: until something
+       is on the canvas there is nothing to place it against. */
+    var G_TH_FIRST = 0.28, G_TH_REST = 0.15;
+    var G_LEN_RATIO = 2;
+
+    function guidedCompare(drawn, idx) {
+      var refPts = cell.refs[idx];
+      var mine = resample(drawn, NRS), ref = resample(refPts, NRS);
+      var fwd = meanDist(mine, ref) / SZ;
+      var rev = meanDist(mine.slice().reverse(), ref) / SZ;
+      var lr = pathLength(refPts) / SZ, ld = pathLength(drawn) / SZ;
+      var lenOk = !(Math.max(lr, ld) > LEN_MIN &&
+                    (ld > lr * G_LEN_RATIO || lr > ld * G_LEN_RATIO));
+      var th = (idx === 0 ? G_TH_FIRST : G_TH_REST) * TOL;
+      return { dist: Math.min(fwd, rev), ok: fwd <= th && lenOk,
+               backwards: rev <= th && rev < fwd * REV_RATIO && lenOk };
+    }
+
+    // Drawing a stroke that belongs later in the character is the mistake
+    // this practice exists to catch, so it is named rather than lumped in
+    // with everything else that does not match.
+    function looksLikeLater(drawn) {
+      var here = guidedCompare(drawn, cell.expect).dist;
+      var best = -1, bestDist = Infinity;
+      for (var j = cell.expect + 1; j < cell.refs.length; j++) {
+        var c = guidedCompare(drawn, j);
+        if (c.dist < bestDist) { bestDist = c.dist; best = j; }
+      }
+      /* The tolerance for the stroke that is due is wide, so a stroke from
+         later in the character can fall inside it. If one of those fits
+         clearly better than the one due, that is the stroke that was
+         drawn — and saying so is the whole point of practising order. */
+      return (best !== -1 && bestDist < here * 0.7) ? best : -1;
+    }
+
+    var raf = (typeof requestAnimationFrame === 'function')
+      ? function (f) { requestAnimationFrame(f); }
+      : function (f) { setTimeout(f, 16); };
+
+    /* Draws the stroke the way it is written — from its start, at writing
+       speed — because that is what a static outline cannot say: where it
+       begins and which way it runs. */
+    function animateStroke(pts, after) {
+      var total = pathLength(pts), t0 = Date.now();
+      var DUR = Math.max(350, Math.min(1100, total * 3));
+      cell.animating = true;
+      function frame() {
+        var t = Math.min(1, (Date.now() - t0) / DUR);
+        redraw();
+        paintPartial(pts, t);
+        if (t < 1) { raf(frame); }
+        else { cell.animating = false; redraw(); if (after) { after(); } }
+      }
+      frame();
+    }
+
+    function paintPartial(pts, t) {
+      var want = pathLength(pts) * t, walked = 0;
+      var upto = [pts[0]];
+      for (var i = 1; i < pts.length; i++) {
+        var dx = pts[i].x - pts[i - 1].x, dy = pts[i].y - pts[i - 1].y;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        if (walked + len >= want) {
+          var u = len ? (want - walked) / len : 0;
+          upto.push({ x: pts[i - 1].x + dx * u, y: pts[i - 1].y + dy * u });
+          break;
+        }
+        walked += len;
+        upto.push(pts[i]);
+      }
+      paintStroke(upto, '#e08e0b');
+      // The dot marks where the stroke starts, which is half of knowing
+      // how to write it.
+      ctx.save();
+      ctx.fillStyle = '#e08e0b';
+      ctx.beginPath();
+      ctx.arc(pts[0].x, pts[0].y, Math.max(3, SW * 1.4), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function guidedSummary() {
+      var n = cell.refs.length;
+      var right = cell.verdicts.filter(function (v) { return v === 'ok'; }).length;
+      if (right === n) { say(fmt(L.allRight, { n: n }), true); }
+      else { say(fmt(L.score, { ok: right, n: n }), false); }
+    }
+
+    function acceptStroke(kind) {
+      cell.strokes.push(cell.refs[cell.expect].slice());
+      cell.verdicts.push(kind);
+      cell.expect += 1;
+      cell.misses = 0;
+      redraw(); tick();
+      if (cell.expect >= cell.refs.length) { guidedSummary(); }
+      else if (kind === 'ok') { say(fmt(L.okStroke, { i: cell.expect }), true); }
+    }
+
+    function showHint() {
+      if (!cell.refs || cell.expect >= cell.refs.length) { return; }
+      say(fmt(L.gWatch, { i: cell.expect + 1 }), false);
+      animateStroke(cell.refs[cell.expect]);
+    }
+
+    // A stroke that did not land stays on screen just long enough to see
+    // what was drawn, then is rubbed out so the canvas only ever holds the
+    // character as it should be.
+    function rejectStroke(drawn, message) {
+      cell.reject = drawn;
+      say(message, false);
+      redraw();
+      setTimeout(function () {
+        if (cell.reject === drawn) { cell.reject = null; redraw(); }
+      }, 500);
+    }
+
+    function guidedStroke(drawn) {
+      if (cell.expect >= cell.refs.length) { guidedSummary(); redraw(); return; }
+      var c = guidedCompare(drawn, cell.expect);
+      var later = looksLikeLater(drawn);
+      if (c.ok && !c.backwards && later === -1) { acceptStroke('ok'); return; }
+
+      cell.misses += 1;
+      var i = cell.expect + 1;
+      var why = later !== -1 ? fmt(L.gLater, { i: i })
+              : c.backwards ? fmt(L.eRev, { i: i })
+              : diagnose(drawn, cell.expect, cell.refs, IDENTITY, cell.expect, false).e;
+
+      if (cell.misses >= ACCEPT_AFTER) {
+        rejectStroke(drawn, fmt(L.gForced, { i: i }));
+        acceptStroke('forced');
+        return;
+      }
+      rejectStroke(drawn, why + ' · ' + fmt(L.gRetry, { i: i }));
+      if (cell.misses >= HINT_AFTER) {
+        setTimeout(showHint, 550);
       }
     }
 
@@ -1053,8 +1265,14 @@ _CANVAS_JS = r"""(function () {
     });
     function endStroke() {
       if (!dn) { return; } dn = false;
-      if (cur.length > 1) { cell.strokes.push(cur.slice()); }
-      cur = []; redraw(); tick(); afterStroke();
+      var drawn = cur.slice();
+      cur = [];
+      if (GUIDED && cell.refs && drawn.length > 1) {
+        guidedStroke(drawn);
+        return;
+      }
+      if (drawn.length > 1) { cell.strokes.push(drawn); }
+      redraw(); tick(); afterStroke();
     }
     cvs.addEventListener('pointerup',     endStroke);
     cvs.addEventListener('pointercancel', endStroke);
@@ -1084,6 +1302,16 @@ _CANVAS_JS = r"""(function () {
     cvs.addEventListener('contextmenu',  _eat);
 
     cell.bar = bar;
+    cell.showHint = showHint;
+    cell.startGuided = function () {
+      withRefs(function (ok) {
+        if (!ok) { return; }
+        // Resuming a card that was part-written: carry on from there.
+        cell.expect = Math.min(cell.strokes.length, cell.refs.length);
+        redraw(); tick();
+        if (cell.expect >= cell.refs.length && cell.refs.length) { guidedSummary(); }
+      });
+    };
     cell.redraw = redraw;
     cell.tick = tick;
     cell.say = say;
@@ -1099,7 +1327,8 @@ _CANVAS_JS = r"""(function () {
 
   var cells = [];
   for (var ci = 0; ci < NCELLS; ci++) {
-    cells.push(makeCell(ci, TARGETS[ci] || '', initial[ci] || []));
+    cells.push(makeCell(ci, TARGETS[ci] || '',
+                        _cellStrokes(initial[ci]), _cellVerdicts(initial[ci])));
   }
 
   function eachCell(fn) { cells.forEach(fn); }
@@ -1176,7 +1405,10 @@ _CANVAS_JS = r"""(function () {
      character left blank is part of the answer and gets reported as
      missing rather than passed over. */
   function checkAll(full, auto) {
-    if (!CHECK) { return; }
+    // Guided practice has already judged every stroke on the way in, and
+    // the strokes on the canvas are the reference's own — re-checking them
+    // would report a flawless character however many tries it took.
+    if (!CHECK || GUIDED) { return; }
     var anyStrokes = false;
     eachCell(function (c) { if (c.strokes.length) { anyStrokes = true; } });
     if (auto && !anyStrokes) { return; }
@@ -1238,11 +1470,18 @@ _CANVAS_JS = r"""(function () {
   eachCell(function (c) { c.redraw(); c.tick(); });
   refreshSummary();
 
-  // A restored front drawing, or the back side showing what was written on
-  // the front, both arrive with strokes already in place — judge them right
-  // away instead of waiting for the next stroke that may never come. The
-  // back always gets the full verdict since it is the compare view.
-  checkAll(IS_BACK || CHECK_MODE === 'manual', true);
+  if (GUIDED) {
+    // Each canvas needs its reference before the first stroke can be
+    // judged against it, rather than on demand as free drawing does.
+    eachCell(function (c) { if (c.target) { c.startGuided(); } });
+  } else {
+    // A restored front drawing, or the back side showing what was written
+    // on the front, both arrive with strokes already in place — judge them
+    // right away instead of waiting for the next stroke that may never
+    // come. The back always gets the full verdict since it is the compare
+    // view.
+    checkAll(IS_BACK || CHECK_MODE === 'manual', true);
+  }
 }());"""
 
 
@@ -1265,7 +1504,11 @@ def build_block(cfg: dict, expected_field: str | None = None) -> str:
     restore = "1" if cfg.get("restore_after_undo", True) else "0"
     keep_window = cfg.get("keep_window_seconds", 90)
     check   = "1" if cfg.get("check_strokes", False) else "0"
-    mode    = "manual" if cfg.get("check_mode") == "manual" else "live"
+    mode    = cfg.get("check_mode", "live")
+    if mode not in ("live", "manual", "guided"):
+        mode = "live"
+    hint_after   = cfg.get("hint_after_misses", 3)
+    accept_after = cfg.get("accept_after_misses", 5)
     tol     = cfg.get("check_tolerance", 1.0)
     chars   = cfg.get("canvas_characters", "auto")
     if chars not in ("auto", "kanji", "all"):
@@ -1293,6 +1536,7 @@ def build_block(cfg: dict, expected_field: str | None = None) -> str:
         f'data-keep-window="{keep_window}" '
         f'data-check="{check}" data-check-mode="{mode}" '
         f'data-tol="{tol}" data-chars="{chars}" '
+        f'data-hint-after="{hint_after}" data-accept-after="{accept_after}" '
         f'data-expected-field="{escape(expected_field or "", quote=True)}" '
         f'data-lang="{lang}">{expected}</div>'
     )

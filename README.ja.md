@@ -133,7 +133,9 @@
 | `restore_after_undo` | `true` | 同じ問題が再表示されたときに筆跡を復元するか |
 | `keep_window_seconds` | `90` | その復元が有効な時間 |
 | `check_strokes` | `false` | 筆画の照合を最初からオンにするか |
-| `check_mode` | `"live"` | `"live"`（一画ごとに判定）または `"manual"`（押したときに判定） |
+| `check_mode` | `"live"` | `"live"`（一画ごとに判定）、`"manual"`（押したときに判定）、`"guided"`（一画ずつ、正しく書けるまで繰り返す） |
+| `hint_after_misses` | `3` | guided: 手本を見せるまでの失敗回数 |
+| `accept_after_misses` | `5` | guided: その画を与えて次へ進むまでの失敗回数 |
 | `check_tolerance` | `1.0` | 照合の寛容さ。大きくするとより雑な字でも正解になる |
 
 設定を変更した後は、対象テンプレートでキャンバスを**削除してから再追加**することで

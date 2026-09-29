@@ -96,6 +96,21 @@ device until changed again.
 - `"live"` — every stroke is judged the moment you lift the pen.
 - `"manual"` — nothing is judged until you press **Check**, so you can
   write the whole character undisturbed.
+- `"guided"` — one stroke at a time, the way the stroke-order apps do it: a
+  stroke that is not the one due is rubbed out and you try it again, and a
+  stroke that lands is replaced by the reference stroke, so the character
+  assembles itself in its own place and size. Drawing a stroke that belongs
+  later is named as such, which is the mistake this practice is for. After
+  a few misses the stroke is demonstrated — drawn from its starting point
+  at writing speed — and after a few more it is given to you, marked amber,
+  so one stroke cannot trap you on a card. The 👁 button demonstrates the
+  stroke whenever you ask, without failing at it first.
+
+  Nothing in guided practice has to work out how big you write, because the
+  strokes already on the canvas say where the character sits. The flip side
+  is that it asks you to write where the character goes: a character
+  written at half the size of the one being assembled is out of place, and
+  is rejected as such.
 
 Either way, a stroke that went wrong turns red or amber and the shape it
 should have had is drawn over your writing as a dashed outline, so there is
@@ -112,6 +127,15 @@ The verdict names the mistake rather than just calling the stroke wrong:
 | *wrong length* | the right shape, far too long or too short |
 | *wrong shape* | not that stroke |
 | *extra stroke* | more strokes than the character has |
+
+**`hint_after_misses`** *(integer, default `3`)*
+Guided practice only: how many times the same stroke may be missed before
+it is demonstrated.
+
+**`accept_after_misses`** *(integer, default `5`)*
+Guided practice only: how many misses before the stroke is given to you and
+practice moves on. It is marked amber and counted as not earned in the
+verdict. Always at least one more than `hint_after_misses`.
 
 **`check_tolerance`** *(number, default `1.0`)*
 Multiplies how far a stroke may sit from its reference shape before it

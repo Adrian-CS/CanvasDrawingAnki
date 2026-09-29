@@ -112,21 +112,38 @@ class Element {
 function makeCtx() {
   const ops = [];
   const noop = () => {};
-  return {
+  /* save/restore have to be modelled rather than ignored: the card script
+     sets the dash for the grid and the colour for each stroke inside
+     save/restore pairs, so without the stack every stroke painted after the
+     grid would still read as dashed. Each stroke is recorded with the
+     colour and dash in force, which is the verdict made visible. */
+  let state = { colour: '', dash: '' };
+  const stack = [];
+  const ctx = {
     ops,
-    save: noop, restore: noop, beginPath: noop, fillRect: noop,
+    beginPath: noop, fillRect: noop,
+    save: () => { stack.push({ colour: state.colour, dash: state.dash }); },
+    restore: () => { state = stack.pop() || { colour: '', dash: '' }; },
     moveTo: (x, y) => ops.push(['pt', x, y]),
     lineTo: (x, y) => ops.push(['pt', x, y]),
-    stroke: () => ops.push(['stroke']),
+    stroke: () => ops.push(['stroke', state.colour, state.dash]),
     clearRect: () => ops.push(['clearRect']),
-    setLineDash: (d) => ops.push(['setLineDash', (d || []).join(',')]),
+    setLineDash: (d) => { state.dash = (d || []).join(','); },
   };
+  ['strokeStyle', 'fillStyle', 'globalAlpha', 'lineWidth', 'lineCap',
+   'lineJoin'].forEach((prop) => {
+    Object.defineProperty(ctx, prop, {
+      get: () => (prop === 'strokeStyle' ? state.colour : undefined),
+      set: (v) => { if (prop === 'strokeStyle') { state.colour = v; } },
+    });
+  });
+  return ctx;
 }
 
 const GHOST_DASH = '6,5';
 
 /** The canvas as it currently stands: everything painted since the last
- *  clearRect, with the dash pattern in force at the time. */
+ *  clearRect. */
 function lastFrame(canvas) {
   const ops = canvas.getContext().ops;
   let from = 0;
@@ -137,17 +154,29 @@ function lastFrame(canvas) {
 /** How many expected-stroke outlines the canvas currently shows. */
 function ghostsDrawn(canvas) {
   return lastFrame(canvas).filter(
-    (op) => op[0] === 'setLineDash' && op[1] === GHOST_DASH).length;
+    (op) => op[0] === 'stroke' && op[2] === GHOST_DASH).length;
+}
+
+/** The colour each drawn stroke currently carries, in order — the verdict
+ *  made visible. The grid and the outlines are dashed; the strokes the
+ *  person drew are the only solid ones. */
+function strokeColours(canvas) {
+  return lastFrame(canvas)
+    .filter((op) => op[0] === 'stroke' && op[2] === '')
+    .map((op) => op[1]);
 }
 
 /** The bounding box of those outlines, to check they are drawn over the
  *  writing rather than at the size of the reference font's em box. */
 function ghostBox(canvas) {
-  let dash = '';
   const pts = [];
+  let pending = [];
   lastFrame(canvas).forEach((op) => {
-    if (op[0] === 'setLineDash') { dash = op[1]; }
-    if (op[0] === 'pt' && dash === GHOST_DASH) { pts.push({ x: op[1], y: op[2] }); }
+    if (op[0] === 'pt') { pending.push({ x: op[1], y: op[2] }); }
+    if (op[0] === 'stroke') {
+      if (op[2] === GHOST_DASH) { pts.push.apply(pts, pending); }
+      pending = [];
+    }
   });
   if (!pts.length) { return null; }
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
@@ -162,7 +191,7 @@ function makeEnv(opts) {
   const o = Object.assign({
     size: 300, expected: '', isBack: false, check: '1',
     checkMode: 'live', tol: '1', chars: 'auto', lang: 'en',
-    body: '<div>card</div>',
+    hintAfter: '3', acceptAfter: '5', body: '<div>card</div>',
     strokeData: null, storage: {},
   }, opts);
 
@@ -180,6 +209,7 @@ function makeEnv(opts) {
     gc: '#aaaaaa', bg: '#ffffff', persist: '1', restore: '1',
     keepWindow: '90', check: o.check, checkMode: o.checkMode,
     tol: o.tol, chars: o.chars, lang: o.lang,
+    hintAfter: o.hintAfter, acceptAfter: o.acceptAfter,
   });
   if (o.expected) {
     const span = new Element('span', doc);
@@ -249,4 +279,5 @@ function drawStroke(canvas, pts) {
 module.exports = {
   extractCanvasJs, loadStrokeData, referenceStrokes,
   makeEnv, runCard, drawStroke, cellsOf, ghostsDrawn, ghostBox,
+  strokeColours,
 };

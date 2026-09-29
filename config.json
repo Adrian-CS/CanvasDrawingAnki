@@ -11,5 +11,7 @@
     "check_strokes": false,
     "check_mode": "live",
     "check_tolerance": 1.0,
-    "canvas_characters": "auto"
+    "canvas_characters": "auto",
+    "hint_after_misses": 3,
+    "accept_after_misses": 5
 }

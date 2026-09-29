@@ -137,7 +137,9 @@ Go to **Tools → Add-ons**, select *Kanji Drawing Canvas*, click **Config**.
 | `restore_after_undo` | `true` | Restore the drawing when the same question is shown again |
 | `keep_window_seconds` | `90` | How long that restore stays available |
 | `check_strokes` | `false` | Whether stroke checking starts out on |
-| `check_mode` | `"live"` | `"live"` (judge each stroke) or `"manual"` (judge on demand) |
+| `check_mode` | `"live"` | `"live"` (judge each stroke), `"manual"` (judge on demand) or `"guided"` (one stroke at a time, retried until right) |
+| `hint_after_misses` | `3` | Guided: misses before the stroke is demonstrated |
+| `accept_after_misses` | `5` | Guided: misses before the stroke is given to you |
 | `check_tolerance` | `1.0` | How forgiving stroke matching is — raise to accept rougher writing |
 
 After changing config values, **remove and re-add** the canvas on each affected
