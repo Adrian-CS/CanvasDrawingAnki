@@ -145,7 +145,9 @@ clic en **Configuración**.
 | `restore_after_undo` | `true` | Restaurar el dibujo si se vuelve a mostrar la misma pregunta |
 | `keep_window_seconds` | `90` | Durante cuánto tiempo sigue disponible esa restauración |
 | `check_strokes` | `false` | Si la comprobación de trazos empieza activada |
-| `check_mode` | `"live"` | `"live"` (juzga cada trazo) o `"manual"` (juzga al pedirlo) |
+| `check_mode` | `"live"` | `"live"` (juzga cada trazo), `"manual"` (juzga al pedirlo) o `"guided"` (trazo a trazo, repitiendo hasta acertar) |
+| `hint_after_misses` | `3` | Guiado: fallos antes de que te enseñe el trazo |
+| `accept_after_misses` | `5` | Guiado: fallos antes de darte el trazo por bueno |
 | `check_tolerance` | `1.0` | Cuánta manga ancha da la comparación — súbelo para aceptar escritura más tosca |
 
 Tras cambiar la configuración, **elimina y vuelve a añadir** el canvas en cada
