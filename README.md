@@ -20,6 +20,10 @@ character directly inside your flashcard review — on desktop **and** mobile.
   expected character: shape, position, stroke order and stroke direction,
   live as you write or on demand. A field holding a word gets one canvas
   per character. Works on mobile too.
+- **Guided practice** *(optional)* — one stroke at a time: a stroke that is
+  not the one due is rubbed out and retried, one that lands is replaced by
+  the reference stroke, and after a few misses the stroke is drawn for you
+  from its starting point.
 - **Works on mobile** (AnkiDroid / AnkiMobile) via standard HTML5 Canvas +
   Pointer Events — no add-on required on the mobile side.
 - **Auto-detected UI language**: English, Spanish, or Japanese, following the
@@ -103,6 +107,16 @@ holds a kanji, so 図りたい is one canvas for 図 rather than four; a word wi
 no kanji in it, like ラーメン, still gets one canvas per kana.
 `canvas_characters` changes that rule. Furigana readings in brackets are
 ignored, so 漢字[かんじ] still gives two canvases and not five.
+
+**Guided practice** (`check_mode: "guided"`) swaps that for one stroke at a
+time, the way the stroke-order apps do it. A stroke that is not the one due
+is rubbed out and you try it again; one that lands is replaced by the
+reference stroke, so the character assembles itself in its own place and
+size — nothing has to work out how big you write. Drawing a stroke that
+belongs later is named as such. After three misses the stroke is
+demonstrated, drawn from its starting point, and after five it is given to
+you in amber so one stroke cannot trap you on a card. The 👁 button
+demonstrates it whenever you ask.
 
 By default each stroke is judged as you lift the pen. Set `check_mode` to
 `"manual"` if you would rather write the whole character undisturbed and

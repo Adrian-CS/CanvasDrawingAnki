@@ -21,6 +21,9 @@ tarjetas — tanto en escritorio **como** en móvil.
   carácter esperado: forma, posición, orden y dirección de cada trazo, sobre
   la marcha o cuando tú lo pidas. Si el campo contiene una palabra, se añade
   un canvas por carácter. También funciona en móvil.
+- **Práctica guiada** *(opcional)* — un trazo cada vez: el que no toca se
+  borra y lo repites, el que acierta se sustituye por el de referencia, y
+  tras unos fallos te lo dibuja desde su punto de inicio.
 - **Funciona en móvil** (AnkiDroid / AnkiMobile) mediante HTML5 Canvas +
   Pointer Events estándar — no se necesita complemento en el lado móvil.
 - **Idioma de la interfaz detectado automáticamente**: inglés, español o
@@ -107,6 +110,15 @@ campo también tiene un kanji, así que 図りたい es un solo canvas para 図 
 cuatro; una palabra sin kanji, como ラーメン, sigue dando un canvas por kana.
 `canvas_characters` cambia esa regla. Las lecturas furigana entre corchetes
 se ignoran, así que 漢字[かんじ] sigue dando dos canvas y no cinco.
+
+La **práctica guiada** (`check_mode: "guided"`) cambia eso por un trazo cada
+vez, como lo hacen las apps de orden de trazos. El trazo que no toca se borra
+y lo repites; el que acierta se sustituye por el de referencia, así que el
+carácter se monta solo en su sitio y a su tamaño — nada tiene que adivinar a
+qué tamaño escribes. Si dibujas un trazo que va después, te lo dice. A los
+tres fallos te lo demuestra, dibujándolo desde su punto de inicio, y a los
+cinco te lo da en ámbar para que un trazo no te atasque en una tarjeta. El
+botón 👁 te lo enseña cuando quieras.
 
 Por defecto cada trazo se juzga al levantar el dedo. Pon `check_mode` en
 `"manual"` si prefieres escribir el carácter entero sin interrupciones y pulsar
