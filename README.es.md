@@ -162,8 +162,13 @@ clic en **Configuración**.
 | `accept_after_misses` | `5` | Guiado: fallos antes de darte el trazo por bueno |
 | `check_tolerance` | `1.0` | Cuánta manga ancha da la comparación — súbelo para aceptar escritura más tosca |
 
-Tras cambiar la configuración, **elimina y vuelve a añadir** el canvas en cada
-plantilla afectada para aplicar los nuevos valores.
+Estos valores se escriben en la plantilla al añadir el canvas, así que
+cambiarlos no llega a las plantillas que ya lo tienen. Después de editarlos,
+abre **Herramientas → Canvas de dibujo…** y pulsa **Actualizar canvas**: se
+reescriben todos con los valores actuales, conservando cada uno el campo que
+comprueba. Ese mismo botón es como se cambia ese campo — elige la plantilla,
+elige el campo y pulsa Actualizar — sin tener que quitar el canvas y volver a
+ponerlo.
 
 ---
 

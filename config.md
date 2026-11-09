@@ -1,7 +1,11 @@
 # Configuration
 
-After changing any value, open **Tools → Drawing Canvas…**, remove the canvas
-from the affected template, and re-add it so the new values take effect.
+The values here are written into a card template when the canvas is added
+to it, so changing them does not reach templates that already have one.
+After editing this configuration, open **Tools → Drawing Canvas…** and press
+**Update Canvases**: every canvas in the collection is rewritten with the
+current values, keeping the field each one checks against and leaving the
+rest of your templates alone.
 
 **`canvas_size`** *(integer, default `300`)*
 Side length of the square canvas in pixels.

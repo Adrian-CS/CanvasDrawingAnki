@@ -16,7 +16,13 @@ from aqt.utils import askUser, showInfo, tooltip
 
 from . import media
 from .i18n import get_strings
-from .template import expected_field, has_canvas, inject, remove
+from .template import (
+    expected_field,
+    has_canvas,
+    inject,
+    refresh_model,
+    remove,
+)
 
 
 class DrawingCanvasDialog(QDialog):
@@ -49,6 +55,7 @@ class DrawingCanvasDialog(QDialog):
         self.tmpl_list = QListWidget()
         self.tmpl_list.setAlternatingRowColors(True)
         self.tmpl_list.setMinimumHeight(120)
+        self.tmpl_list.currentItemChanged.connect(self._template_selected)
         root.addWidget(self.tmpl_list)
 
         # Stroke-checking field. The canvas can compare what is drawn
@@ -74,6 +81,14 @@ class DrawingCanvasDialog(QDialog):
         act_row.addWidget(self.add_btn)
         act_row.addWidget(self.rem_btn)
         root.addLayout(act_row)
+
+        # Settings are baked into the block when it is injected, so without
+        # this every change to the configuration means removing and
+        # re-adding the canvas on each template by hand.
+        self.upd_btn = QPushButton(s["update_btn"])
+        self.upd_btn.setToolTip(s["update_confirm_plain"].format(n="…", m="…"))
+        self.upd_btn.clicked.connect(self._update_canvases)
+        root.addWidget(self.upd_btn)
 
         close_btn = QPushButton(s["close_btn"])
         close_btn.clicked.connect(self.accept)
@@ -114,21 +129,42 @@ class DrawingCanvasDialog(QDialog):
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, tmpl["name"])
             self.tmpl_list.addItem(item)
-        self._refresh_fields(model)
+        self._refresh_fields(model, self._selected_field())
 
-    def _refresh_fields(self, model) -> None:
+    def _selected_field(self):
+        """What the selected template checks against, or None if unknown."""
+        model, tmpl = self._selected(quiet=True)
+        if tmpl is None or not has_canvas(tmpl["qfmt"]):
+            return None
+        return expected_field(tmpl["qfmt"])
+
+    def _template_selected(self, *_args) -> None:
+        idx = self.nt_combo.currentIndex()
+        if 0 <= idx < len(self._models):
+            self._refresh_fields(self._models[idx], self._selected_field())
+
+    def _refresh_fields(self, model, current: str | None = None) -> None:
         names = [f["name"] for f in model["flds"]]
         self.field_combo.clear()
         self.field_combo.addItem(self._s["check_field_none"], "")
         for name in names:
             self.field_combo.addItem(name, name)
-        # Pre-select an obvious candidate so the common case is one click,
-        # while leaving "no checking" as the outcome when nothing fits.
-        lowered = {n.lower(): n for n in names}
-        for guess in self._LIKELY_FIELDS:
-            if guess in lowered:
-                self.field_combo.setCurrentText(lowered[guess])
-                break
+        # A template that already has a canvas says what it checks against;
+        # showing a guess instead would be telling the user something
+        # untrue about the template in front of them.
+        if current and current in names:
+            self.field_combo.setCurrentText(current)
+        elif current == "":
+            self.field_combo.setCurrentIndex(0)
+        else:
+            # Nothing to go on: pre-select an obvious candidate so the
+            # common case is one click, leaving "no checking" when nothing
+            # fits.
+            lowered = {n.lower(): n for n in names}
+            for guess in self._LIKELY_FIELDS:
+                if guess in lowered:
+                    self.field_combo.setCurrentText(lowered[guess])
+                    break
         if not media.available():
             # An add-on copy built without the data file can still draw;
             # it just can't check, so don't offer a choice that won't work.
@@ -138,10 +174,11 @@ class DrawingCanvasDialog(QDialog):
 
     # ── Helpers ───────────────────────────────────────────────────────
 
-    def _selected(self) -> tuple:
+    def _selected(self, quiet: bool = False) -> tuple:
         item = self.tmpl_list.currentItem()
         if not item:
-            showInfo(self._s["no_template_selected"])
+            if not quiet:
+                showInfo(self._s["no_template_selected"])
             return None, None
         idx = self.nt_combo.currentIndex()
         if idx < 0:
@@ -175,6 +212,63 @@ class DrawingCanvasDialog(QDialog):
             tmpl["afmt"] = inject(tmpl["afmt"], cfg, field)
         mw.col.models.save(model)
         tooltip(self._s["added_ok"])
+        self._refresh_templates(self.nt_combo.currentIndex())
+
+    def _update_canvases(self) -> None:
+        """Rewrite every canvas in the collection with the current config.
+
+        Each template keeps the field it checks against; the one selected
+        in the list takes whatever the field selector shows, so a field can
+        be changed without dismantling the canvas and building it again.
+        """
+        pkg = __name__.split(".")[0]
+        cfg = mw.addonManager.getConfig(pkg) or {}
+
+        models = [m for m in self._models
+                  if any(has_canvas(t["qfmt"]) or has_canvas(t["afmt"])
+                         for t in m["tmpls"])]
+        total = sum(sum(bool(has_canvas(t[side]))
+                        for t in m["tmpls"] for side in ("qfmt", "afmt"))
+                    for m in models)
+        if not total:
+            showInfo(self._s["update_none"])
+            return
+
+        # The selected template is the one the field selector is showing,
+        # so that is the only one allowed to change what it checks against.
+        sel_model, sel_tmpl = self._selected(quiet=True)
+        override = None
+        if sel_tmpl is not None and has_canvas(sel_tmpl["qfmt"]):
+            chosen = self.field_combo.currentData() or ""
+            if chosen != expected_field(sel_tmpl["qfmt"]):
+                override = (sel_model["name"], sel_tmpl["name"], chosen)
+
+        if override:
+            msg = self._s["update_confirm"].format(
+                n=total, m=len(models), tmpl=override[1],
+                field=override[2] or self._s["check_field_none"])
+        else:
+            msg = self._s["update_confirm_plain"].format(n=total, m=len(models))
+        if not askUser(msg):
+            return
+
+        if override and override[2] and not media.install(mw.col):
+            showInfo(self._s["check_install_failed"])
+            override = (override[0], override[1], "")
+
+        done = 0
+        for model in models:
+            fields = ({override[1]: override[2]}
+                      if override and override[0] == model["name"] else None)
+            done += refresh_model(model, cfg, fields)
+            mw.col.models.save(model)
+
+        # A field may have been dropped by this, which can leave the stroke
+        # data with nothing using it.
+        if not media.any_template_checks(mw.col):
+            media.uninstall(mw.col)
+
+        tooltip(self._s["update_ok"].format(n=done))
         self._refresh_templates(self.nt_combo.currentIndex())
 
     def _remove_canvas(self) -> None:

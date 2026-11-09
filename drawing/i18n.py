@@ -8,6 +8,20 @@ STRINGS: dict[str, dict[str, str]] = {
         "templates_label": "Templates  (✓ = canvas active):",
         "add_btn": "Add Canvas",
         "remove_btn": "Remove Canvas",
+        "update_btn": "Update Canvases",
+        "update_confirm": (
+            "Rewrite {n} canvas(es) in {m} note type(s) with the current "
+            "configuration?\n\nEach keeps the field it checks against, "
+            "except '{tmpl}', which will use '{field}'.\n\nNothing else in "
+            "your templates is touched."
+        ),
+        "update_confirm_plain": (
+            "Rewrite {n} canvas(es) in {m} note type(s) with the current "
+            "configuration?\n\nEach keeps the field it checks against, and "
+            "nothing else in your templates is touched."
+        ),
+        "update_none": "No template has a canvas to update.",
+        "update_ok": "{n} canvas(es) updated.",
         "close_btn": "Close",
         "already_added": "The canvas is already added to this template.",
         "not_present": "The canvas is not present in this template.",
@@ -40,6 +54,20 @@ STRINGS: dict[str, dict[str, str]] = {
         "templates_label": "Plantillas  (✓ = canvas activo):",
         "add_btn": "Añadir Canvas",
         "remove_btn": "Eliminar Canvas",
+        "update_btn": "Actualizar canvas",
+        "update_confirm": (
+            "¿Reescribir {n} canvas en {m} tipo(s) de nota con la "
+            "configuración actual?\n\nCada uno conserva el campo que "
+            "comprueba, salvo '{tmpl}', que pasará a usar '{field}'.\n\nNo "
+            "se toca nada más de tus plantillas."
+        ),
+        "update_confirm_plain": (
+            "¿Reescribir {n} canvas en {m} tipo(s) de nota con la "
+            "configuración actual?\n\nCada uno conserva el campo que "
+            "comprueba y no se toca nada más de tus plantillas."
+        ),
+        "update_none": "Ninguna plantilla tiene un canvas que actualizar.",
+        "update_ok": "{n} canvas actualizado(s).",
         "close_btn": "Cerrar",
         "already_added": "El canvas ya está añadido a esta plantilla.",
         "not_present": "El canvas no está presente en esta plantilla.",
@@ -72,6 +100,19 @@ STRINGS: dict[str, dict[str, str]] = {
         "templates_label": "テンプレート（✓ = キャンバス有効）:",
         "add_btn": "キャンバスを追加",
         "remove_btn": "キャンバスを削除",
+        "update_btn": "キャンバスを更新",
+        "update_confirm": (
+            "{m}個のノートタイプにある{n}個のキャンバスを現在の設定で書き直しますか？"
+            "\n\n照合するフィールドはそれぞれ維持されます（'{tmpl}' のみ "
+            "'{field}' に変更）。\n\nテンプレートの他の部分には触れません。"
+        ),
+        "update_confirm_plain": (
+            "{m}個のノートタイプにある{n}個のキャンバスを現在の設定で書き直しますか？"
+            "\n\n照合するフィールドはそれぞれ維持され、テンプレートの他の部分には"
+            "触れません。"
+        ),
+        "update_none": "更新するキャンバスのあるテンプレートがありません。",
+        "update_ok": "{n}個のキャンバスを更新しました。",
         "close_btn": "閉じる",
         "already_added": "このテンプレートにはすでにキャンバスが追加されています。",
         "not_present": "このテンプレートにキャンバスはありません。",
