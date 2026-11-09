@@ -156,8 +156,13 @@ Go to **Tools → Add-ons**, select *Kanji Drawing Canvas*, click **Config**.
 | `accept_after_misses` | `5` | Guided: misses before the stroke is given to you |
 | `check_tolerance` | `1.0` | How forgiving stroke matching is — raise to accept rougher writing |
 
-After changing config values, **remove and re-add** the canvas on each affected
-template to apply the new settings.
+These values are written into a card template when the canvas is added to
+it, so changing them does not reach templates that already have one. After
+editing them, open **Tools → Drawing Canvas…** and press **Update Canvases**:
+every canvas is rewritten with the current values, each keeping the field it
+checks against. The same button is how you change that field — pick the
+template, pick the field, press Update — without taking the canvas off and
+putting it back.
 
 ---
 

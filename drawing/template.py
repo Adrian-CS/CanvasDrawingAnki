@@ -1612,3 +1612,44 @@ def expected_field(qfmt: str) -> str:
         return ""
     m = _FIELD_RE.search(qfmt)
     return unescape(m.group(1)) if m else ""
+
+
+#: Tells refresh() to keep whatever field the block already checks
+#: against. Passing a name replaces it; passing "" removes it. A plain
+#: default of None would make the common call quietly unwire the template.
+KEEP_FIELD = object()
+
+
+def refresh(fmt: str, cfg: dict, expected_field_name=KEEP_FIELD) -> str:
+    """Rewrite an existing block with the current settings.
+
+    The settings are baked into the block when it is injected, so changing
+    the add-on's configuration leaves every template that already has a
+    canvas on the old values. This swaps the block for a current one and
+    leaves the template around it alone. A template without a canvas is
+    returned untouched: refreshing is not a way to add one.
+    """
+    if not has_canvas(fmt):
+        return fmt
+    field = (expected_field(fmt) if expected_field_name is KEEP_FIELD
+             else expected_field_name)
+    return inject(remove(fmt), cfg, field)
+
+
+def refresh_model(model: dict, cfg: dict, fields: dict | None = None) -> int:
+    """Refresh every canvas in one note type. Returns how many it rewrote.
+
+    Each template keeps the field it checks against unless ``fields`` names
+    a replacement for it, keyed by template name — so updating after a
+    configuration change does not quietly rewire what a card is about.
+    """
+    done = 0
+    for tmpl in model["tmpls"]:
+        name = tmpl.get("name", "")
+        for side in ("qfmt", "afmt"):
+            if not has_canvas(tmpl[side]):
+                continue
+            field = fields[name] if (fields and name in fields) else KEEP_FIELD
+            tmpl[side] = refresh(tmpl[side], cfg, field)
+            done += 1
+    return done

@@ -131,6 +131,66 @@ check("a block already present is left alone by inject",
 check("exactly one block is written", injected.count(T.MARKER_START) == 1
       and injected.count(T.MARKER_END) == 1)
 
+# ── Refreshing a canvas that is already in place ──────────────────────
+
+print("\nupdating canvases in place")
+
+OLD = {"canvas_size": 300, "check_mode": "live", "check_strokes": True}
+NEW = {"canvas_size": 250, "check_mode": "guided", "check_strokes": True,
+       "hint_after_misses": 2}
+
+placed = T.inject(ORIGINAL, OLD, "Kanji")
+updated = T.refresh(placed, NEW)
+
+check("the new settings reach the card",
+      'data-size="250"' in updated and 'data-check-mode="guided"' in updated
+      and 'data-hint-after="2"' in updated)
+check("the old ones are gone",
+      'data-size="300"' not in updated and 'data-check-mode="live"' not in updated)
+check("the template around the block is untouched",
+      updated.startswith(ORIGINAL))
+check("exactly one block remains", updated.count(T.MARKER_START) == 1)
+
+# The common call must not quietly unwire what the card is about.
+check("the field is kept by default", T.expected_field(updated) == "Kanji")
+check("a named field replaces it",
+      T.expected_field(T.refresh(placed, NEW, "Reading")) == "Reading")
+check("an empty name unwires it deliberately",
+      T.expected_field(T.refresh(placed, NEW, "")) == "")
+check("a template with no canvas is left exactly as it was",
+      T.refresh(ORIGINAL, NEW) == ORIGINAL)
+check("refreshing twice is the same as refreshing once",
+      T.refresh(updated, NEW) == updated)
+
+# Both sides, since a back template that does not embed the front side gets
+# its own canvas and would otherwise be left on the old settings.
+model = {"tmpls": [
+    {"name": "Card 1", "qfmt": T.inject("q", OLD, "Kanji"),
+     "afmt": T.inject("a", OLD, "Kanji")},
+    {"name": "Card 2", "qfmt": T.inject("q2", OLD, "Word"), "afmt": "plain"},
+    {"name": "Card 3", "qfmt": "no canvas", "afmt": "none either"},
+]}
+count = T.refresh_model(model, NEW)
+check("every canvas in the note type is counted", count == 3, count)
+check("the back side is updated too",
+      'data-size="250"' in model["tmpls"][0]["afmt"])
+check("each template keeps its own field",
+      T.expected_field(model["tmpls"][0]["qfmt"]) == "Kanji"
+      and T.expected_field(model["tmpls"][1]["qfmt"]) == "Word")
+check("a template without a canvas is not given one",
+      not T.has_canvas(model["tmpls"][2]["qfmt"]))
+
+# Only the template named is rewired; the rest keep what they check.
+model2 = {"tmpls": [
+    {"name": "Card 1", "qfmt": T.inject("q", OLD, "Kanji"), "afmt": "x"},
+    {"name": "Card 2", "qfmt": T.inject("q2", OLD, "Word"), "afmt": "y"},
+]}
+T.refresh_model(model2, NEW, {"Card 2": "Expression"})
+check("the named template changes field",
+      T.expected_field(model2["tmpls"][1]["qfmt"]) == "Expression")
+check("and the others do not",
+      T.expected_field(model2["tmpls"][0]["qfmt"]) == "Kanji")
+
 # ── The stroke data in the media folder ───────────────────────────────
 
 print("\nstroke data in the media folder")
