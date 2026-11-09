@@ -38,6 +38,9 @@ jobs:
       - name: Run tests
         run: node tests/test_checking.js
 
+      - name: Template and media tests
+        run: python3 tests/test_template.py
+
       - name: Build .ankiaddon
         run: |
           zip -r kanjiDrawingAnki.ankiaddon \

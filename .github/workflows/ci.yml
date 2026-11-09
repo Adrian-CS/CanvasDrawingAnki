@@ -23,5 +23,8 @@ jobs:
       - name: Stroke-checking tests
         run: node tests/test_checking.js
 
+      - name: Template and media tests
+        run: python3 tests/test_template.py
+
       - name: Byte-compile the add-on
         run: python3 -m compileall -q __init__.py drawing tools
