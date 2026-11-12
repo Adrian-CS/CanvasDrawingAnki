@@ -134,6 +134,7 @@
 | `keep_window_seconds` | `90` | その復元が有効な時間 |
 | `check_strokes` | `false` | 筆画の照合を最初からオンにするか |
 | `check_mode` | `"live"` | `"live"`（一画ごとに判定）、`"manual"`（押したときに判定）、`"guided"`（一画ずつ、正しく書けるまで繰り返す） |
+| `stroke_export` | `false` | 書いた内容をコピーするボタンを追加（判定に納得できないときの報告用） |
 | `hint_after_misses` | `3` | guided: 手本を見せるまでの失敗回数 |
 | `accept_after_misses` | `5` | guided: その画を与えて次へ進むまでの失敗回数 |
 | `check_tolerance` | `1.0` | 照合の寛容さ。大きくするとより雑な字でも正解になる |

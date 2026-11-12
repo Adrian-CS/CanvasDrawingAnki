@@ -120,7 +120,11 @@ tres fallos te lo demuestra, dibujándolo desde su punto de inicio, y a los
 cinco te lo da en ámbar para que un trazo no te atasque en una tarjeta. El
 botón 👁 te lo enseña cuando quieras.
 
-Por defecto cada trazo se juzga al levantar el dedo. Pon `check_mode` en
+Por defecto cada trazo se juzga al levantar el dedo — sobre lo que se puede
+juzgar tan pronto. La forma, la dirección y si es el trazo que tocaba no
+necesitan nada más que el trazo; dónde va y cuánto mide dependen del resto
+del carácter, así que esos esperan al veredicto completo, que llega al caer
+el último trazo y otra vez en el reverso. Pon `check_mode` en
 `"manual"` si prefieres escribir el carácter entero sin interrupciones y pulsar
 **Comprobar** al terminar. En ambos casos, el reverso muestra el veredicto
 completo de lo que escribiste.
@@ -158,6 +162,7 @@ clic en **Configuración**.
 | `keep_window_seconds` | `90` | Durante cuánto tiempo sigue disponible esa restauración |
 | `check_strokes` | `false` | Si la comprobación de trazos empieza activada |
 | `check_mode` | `"live"` | `"live"` (juzga cada trazo), `"manual"` (juzga al pedirlo) o `"guided"` (trazo a trazo, repitiendo hasta acertar) |
+| `stroke_export` | `false` | Añade un botón que copia lo que dibujaste, para reportar un veredicto con el que no estés de acuerdo |
 | `hint_after_misses` | `3` | Guiado: fallos antes de que te enseñe el trazo |
 | `accept_after_misses` | `5` | Guiado: fallos antes de darte el trazo por bueno |
 | `check_tolerance` | `1.0` | Cuánta manga ancha da la comparación — súbelo para aceptar escritura más tosca |

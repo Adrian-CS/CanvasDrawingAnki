@@ -528,6 +528,49 @@ console.log('\nguided practice');
   }
 }
 
+// ── Handing over what was drawn ──────────────────────────────────────
+
+/* A screenshot cannot show the path a finger took, which is the only thing
+ * that explains a verdict. This hands over exactly what the checker saw. */
+console.log('\nexporting a drawing');
+{
+  const env = makeEnv({ expected: '日', strokeData: DATA, size: SIZE,
+                        export: '1' });
+  const ui = runCard(env);
+  const drawn = referenceStrokes(DATA, '日', SIZE);
+  drawn.forEach((s) => drawStroke(ui.canvas, s));
+  const bar = env.doc.getElementById('kda-settings-bar')
+           || env.doc.getElementById('kda-bar-0');
+  const copy = bar.children.find((c) => c.textContent === '📋');
+  check('the button is there when asked for', !!copy);
+  copy._fire('click', {});
+  let payload = null;
+  try { payload = JSON.parse(env.win.KDA_LAST_EXPORT); } catch (e) { /* below */ }
+  check('clicking produces a readable payload', !!payload,
+        String(env.win.KDA_LAST_EXPORT).slice(0, 80));
+  check('it names the character and the settings in force',
+        payload && payload.cells[0].target === '日' && payload.mode === 'live'
+          && payload.size === SIZE);
+  check('it carries every stroke that was drawn',
+        payload && payload.cells[0].strokes.length === drawn.length,
+        payload ? payload.cells[0].strokes.length : '-');
+  check('and the points of them',
+        payload && payload.cells[0].strokes[0].length === drawn[0].length);
+  check('with the verdicts they were given',
+        payload && payload.cells[0].verdicts.length === drawn.length);
+  check('when the clipboard refuses, the text is put on screen to select',
+        !!env.doc.getElementById('kda-dump'));
+}
+{
+  const env = makeEnv({ expected: '日', strokeData: DATA, size: SIZE });
+  const ui = runCard(env);
+  const bar = env.doc.getElementById('kda-settings-bar')
+           || env.doc.getElementById('kda-bar-0');
+  const copy = bar.children.find((c) => c.textContent === '📋');
+  check('and it stays out of the way unless asked for',
+        !copy || copy.style.display === 'none');
+}
+
 // ── Modes and opt-out ────────────────────────────────────────────────
 
 console.log('\nmodes');

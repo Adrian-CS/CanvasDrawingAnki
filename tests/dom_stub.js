@@ -203,7 +203,8 @@ function makeEnv(opts) {
   const o = Object.assign({
     size: 300, expected: '', isBack: false, check: '1',
     checkMode: 'live', tol: '1', chars: 'auto', lang: 'en',
-    hintAfter: '3', acceptAfter: '5', body: '<div>card</div>',
+    hintAfter: '3', acceptAfter: '5', export: '0',
+    body: '<div>card</div>',
     strokeData: null, storage: {},
   }, opts);
 
@@ -213,6 +214,7 @@ function makeEnv(opts) {
   doc.head = new Element('head', doc);
   doc.body = new Element('body', doc);
   doc.body.innerHTML = o.body;
+  doc.execCommand = () => false;   // no clipboard in the stub
 
   const anchor = new Element('div', doc);
   anchor.id = 'kda-anchor';
@@ -221,7 +223,7 @@ function makeEnv(opts) {
     gc: '#aaaaaa', bg: '#ffffff', persist: '1', restore: '1',
     keepWindow: '90', check: o.check, checkMode: o.checkMode,
     tol: o.tol, chars: o.chars, lang: o.lang,
-    hintAfter: o.hintAfter, acceptAfter: o.acceptAfter,
+    hintAfter: o.hintAfter, acceptAfter: o.acceptAfter, export: o.export,
   });
   if (o.expected) {
     const span = new Element('span', doc);
