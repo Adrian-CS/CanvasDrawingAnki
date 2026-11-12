@@ -13,5 +13,6 @@
     "check_tolerance": 1.0,
     "canvas_characters": "auto",
     "hint_after_misses": 3,
-    "accept_after_misses": 5
+    "accept_after_misses": 5,
+    "stroke_export": false
 }

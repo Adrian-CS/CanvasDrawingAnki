@@ -118,7 +118,11 @@ demonstrated, drawn from its starting point, and after five it is given to
 you in amber so one stroke cannot trap you on a card. The 👁 button
 demonstrates it whenever you ask.
 
-By default each stroke is judged as you lift the pen. Set `check_mode` to
+By default each stroke is judged as you lift the pen — on what can be
+judged that early. Shape, direction and whether it is the stroke that was
+due need nothing but the stroke itself; where it sits and how long it is
+depend on the rest of the character, so those wait for the full verdict,
+which arrives when the last stroke lands and again on the answer side. Set `check_mode` to
 `"manual"` if you would rather write the whole character undisturbed and
 press **Check** when you are done. Either way the answer side shows the full
 verdict for what you wrote.
@@ -152,6 +156,7 @@ Go to **Tools → Add-ons**, select *Kanji Drawing Canvas*, click **Config**.
 | `keep_window_seconds` | `90` | How long that restore stays available |
 | `check_strokes` | `false` | Whether stroke checking starts out on |
 | `check_mode` | `"live"` | `"live"` (judge each stroke), `"manual"` (judge on demand) or `"guided"` (one stroke at a time, retried until right) |
+| `stroke_export` | `false` | Adds a button that copies what you drew, to report a verdict you disagree with |
 | `hint_after_misses` | `3` | Guided: misses before the stroke is demonstrated |
 | `accept_after_misses` | `5` | Guided: misses before the stroke is given to you |
 | `check_tolerance` | `1.0` | How forgiving stroke matching is — raise to accept rougher writing |

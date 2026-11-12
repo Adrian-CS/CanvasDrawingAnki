@@ -97,7 +97,13 @@ live and that choice, like Keep / Fresh, overrides this default on that
 device until changed again.
 
 **`check_mode`** *(string, default `"live"`)*
-- `"live"` — every stroke is judged the moment you lift the pen.
+- `"live"` — every stroke is judged the moment you lift the pen, on what
+  can be judged that early: its shape, its direction, and whether it is the
+  stroke that was due. Where a stroke sits and how long it is are left to
+  the full verdict, because until the character is finished they are not
+  knowable — where the 木 of 校 belongs depends on where the six strokes
+  after it go. The full verdict arrives when the last stroke lands, and on
+  the answer side.
 - `"manual"` — nothing is judged until you press **Check**, so you can
   write the whole character undisturbed.
 - `"guided"` — one stroke at a time, the way the stroke-order apps do it: a
@@ -140,6 +146,15 @@ it is demonstrated.
 Guided practice only: how many misses before the stroke is given to you and
 practice moves on. It is marked amber and counted as not earned in the
 verdict. Always at least one more than `hint_after_misses`.
+
+**`stroke_export`** *(boolean, default `false`)*
+Adds a 📋 button that copies what you just drew — the strokes themselves,
+the character they were checked against and the settings in force — so a
+verdict you disagree with can be reproduced exactly instead of described. A
+screenshot cannot show the path a finger took, which is the one thing that
+explains a verdict. It is a diagnostic, so it stays out of the way until
+you turn it on. Nothing is sent anywhere: it copies to your clipboard, and
+if the webview refuses, it puts the text on the card for you to select.
 
 **`check_tolerance`** *(number, default `1.0`)*
 Multiplies how far a stroke may sit from its reference shape before it

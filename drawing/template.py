@@ -59,6 +59,9 @@ _CANVAS_JS = r"""(function () {
           gWatch: 'stroke {i}: watch, then copy it',
           gForced: 'stroke {i}: moving on',
           hint: 'Show me this stroke',
+          copy: 'Copy what I drew',
+          copied: 'Copied — paste it where you were asked to',
+          copyFail: 'Could not copy; select the text below',
           noData: 'Stroke data not found — see the add-on docs',
           noChar: 'No reference for {c}' },
     es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos', yourWriting: '✎ Tu escritura',
@@ -81,6 +84,9 @@ _CANVAS_JS = r"""(function () {
           gWatch: 'trazo {i}: míralo y cópialo',
           gForced: 'trazo {i}: seguimos',
           hint: 'Enséñame este trazo',
+          copy: 'Copiar lo que he dibujado',
+          copied: 'Copiado — pégalo donde te lo hayan pedido',
+          copyFail: 'No se pudo copiar; selecciona el texto de abajo',
           noData: 'No se encontraron los datos de trazos — consulta la documentación',
           noChar: 'No hay referencia para {c}' },
     ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数', yourWriting: '✎ あなたの字',
@@ -103,6 +109,9 @@ _CANVAS_JS = r"""(function () {
           gWatch: '{i}画目: 手本を見てなぞってください',
           gForced: '{i}画目: 次へ進みます',
           hint: 'この画を見せる',
+          copy: '書いた内容をコピー',
+          copied: 'コピーしました',
+          copyFail: 'コピーできません。下のテキストを選択してください',
           noData: '筆画データが見つかりません — アドオンの説明を参照',
           noChar: '{c} の参照データがありません' }
   };
@@ -133,6 +142,7 @@ _CANVAS_JS = r"""(function () {
   var GUIDED = CHECK_MODE === 'guided';
   // Misses on one stroke before it is demonstrated, and before it is given
   // to you so a single stroke cannot trap you on the card.
+  var EXPORT = d.export === '1';
   var HINT_AFTER = Math.max(1, parseInt(d.hintAfter, 10) || 3);
   var ACCEPT_AFTER = Math.max(HINT_AFTER + 1, parseInt(d.acceptAfter, 10) || 5);
   // Multiplies every matching threshold — >1 is more forgiving.
@@ -390,6 +400,8 @@ _CANVAS_JS = r"""(function () {
       '#kda-wrap button.kda-settings{',
         'padding:3px 9px!important;font-size:12px!important}',
       '#kda-settings-bar{margin-top:6px!important}',
+      '#kda-dump{display:block!important;width:100%!important;height:64px!important;',
+        'margin-top:6px!important;font-size:10px!important}',
       '#kda-sep{width:1px!important;align-self:stretch!important;margin:2px 2px!important;',
         'background:#ccc!important}',
       '.night_mode #kda-sep,.nightMode #kda-sep{background:#555!important}',
@@ -625,6 +637,16 @@ _CANVAS_JS = r"""(function () {
   // deliberately sloppy writing (strokes misplaced by up to 7% of the
   // canvas, rotated by 5°, sheared) put it around here.
   var MATCH_TH = 0.075;
+  /* While a character is unfinished, how far a stroke sits from where the
+     reference puts it says very little: where the 木 of 校 belongs depends
+     on where the six strokes after it will go, and until they exist the
+     frame is a guess. Shape, direction and order do not need the rest of
+     the character; placement and length do. So mid-character the distance
+     allowed is widened — enough that placement stops failing honest
+     writing, not so far that a different stroke passes — and the length
+     check waits. The full verdict, once the character is complete or asked
+     for, judges on the strict figure above. */
+  var LIVE_FACTOR = 2.5;
   /* Characters that differ only in how long one stroke is relative to
      another — 未/末, 土/士, 刀/力 — sit inside that distance, because
      averaging the difference over a whole stroke dilutes it. Comparing
@@ -650,12 +672,12 @@ _CANVAS_JS = r"""(function () {
      stroke is far too long or short, or it is simply not that stroke.
      Without this everything that fails reads "wrong stroke", which tells
      the writer nothing they didn't already know. */
-  function diagnose(drawn, refIdx, refs, xf, i, noFrame) {
+  function diagnose(drawn, refIdx, refs, xf, i, noFrame, limit) {
     if (refIdx < 0) { return { v: 'bad', e: fmt(L.eExtra, { i: i + 1 }) }; }
     var refPts = applyXf(refs[refIdx], xf);
     var mine = resample(drawn, NRS), ref = resample(refPts, NRS);
     var lr = pathLength(refPts), ld = pathLength(drawn);
-    var limit = MATCH_TH * TOL;
+    limit = limit || MATCH_TH * TOL;
 
     // Same shape, just not where it belongs.
     var fwd = meanDist(centred(mine), centred(ref)) / SZ;
@@ -688,9 +710,9 @@ _CANVAS_JS = r"""(function () {
      too early", which is exactly the mistake stroke-order practice is for.
      A stroke that matches nothing consumes the expected slot anyway so the
      rest of the character still lines up. */
-  function evaluate(drawnList, refs, seed, noFrame) {
+  function evaluate(drawnList, refs, seed, noFrame, lenient) {
     var used = [], pairsD = [], pairsR = [], v = [], errs = [], refOf = [];
-    var cost = 0, limit = MATCH_TH * TOL;
+    var cost = 0, limit = MATCH_TH * TOL * (lenient ? LIVE_FACTOR : 1);
     // The frame the verdicts were actually reached under, which is what the
     // expected shapes have to be drawn in to sit on top of the writing.
     var frame = IDENTITY;
@@ -725,7 +747,7 @@ _CANVAS_JS = r"""(function () {
         // Only once there is a frame: against an unaligned reference every
         // stroke of someone writing at two thirds of the box is "too short".
         var lr = pathLength(refPts) / SZ, ld = pathLength(drawnList[i]) / SZ;
-        var badLen = !noFrame && Math.max(lr, ld) > LEN_MIN &&
+        var badLen = !noFrame && !lenient && Math.max(lr, ld) > LEN_MIN &&
                      (ld > lr * LEN_RATIO || lr > ld * LEN_RATIO);
         if (!best || score < best.score) {
           best = { j: j, score: score, rev: rev < fwd * REV_RATIO,
@@ -735,7 +757,8 @@ _CANVAS_JS = r"""(function () {
       if (!best || best.score > MATCH_TH * TOL) {
         // Nothing this could be. Consume the slot it should have filled so
         // the strokes after it are still judged against the right shapes.
-        var why = diagnose(drawnList[i], expected, refs, xf, i, noFrame);
+        var why = diagnose(drawnList[i], expected, refs, xf, i,
+                           noFrame || lenient, limit);
         v.push(why.v);
         errs.push(why.e);
         refOf.push(expected);
@@ -1012,6 +1035,10 @@ _CANVAS_JS = r"""(function () {
          far. Guessing once is what made a single badly misplaced stroke
          drag the measured box with it and mark the correct stroke beside
          it wrong too — that guess now simply loses to a better one. */
+      /* The full verdict — asked for, or reached by finishing the
+         character — judges everything. Before that, placement and length
+         are not yet knowable, so they are left out. */
+      var strict = full || cell.strokes.length >= refs.length;
       var frames = [null];
       var learned = loadFit();
       if (learned) { frames.push(learned); }
@@ -1045,13 +1072,13 @@ _CANVAS_JS = r"""(function () {
       var noFrame = frames.length === 1 && !complete;
       var r = null;
       frames.forEach(function (f) {
-        var t = evaluate(cell.strokes, refs, f, noFrame);
+        var t = evaluate(cell.strokes, refs, f, noFrame, !strict);
         if (!r || t.cost < r.cost) { r = t; }
       });
       // Refit on the strokes that paired up, which drops any stroke that
       // was never going to match out of the measurement.
       if (!noFrame && r.xf !== IDENTITY) {
-        var refined = evaluate(cell.strokes, refs, r.xf, false);
+        var refined = evaluate(cell.strokes, refs, r.xf, false, !strict);
         if (refined.cost <= r.cost) { r = refined; }
       }
 
@@ -1073,7 +1100,7 @@ _CANVAS_JS = r"""(function () {
       }
       cell.checked = true;
       redraw();
-      if (full || cell.strokes.length >= refs.length) {
+      if (strict) {
         var s = summarize(r, refs, cell.strokes.length);
         say(s.text, s.good);
       } else {
@@ -1425,6 +1452,71 @@ _CANVAS_JS = r"""(function () {
   var goBtn = mkBtn(L.check, function () { checkAll(true, false); });
   goBtn.classList.add('kda-primary');
 
+  /* Reporting that a stroke was judged wrongly is hard to act on from a
+     screenshot: what matters is the path the finger took, and that cannot
+     be read off a picture. This hands over exactly what the checker saw,
+     so a case can be replayed instead of guessed at. Off unless asked for,
+     since it is a diagnostic rather than something to study with. */
+  var copyBtn = mkBtn('📋', function () { exportDrawing(); });
+  copyBtn.classList.add('kda-settings');
+  copyBtn.title = L.copy;
+  if (!EXPORT) { copyBtn.style.display = 'none'; }
+
+  function exportDrawing() {
+    var round = function (v) { return Math.round(v * 10) / 10; };
+    var payload = {
+      v: 1, mode: CHECK_MODE, size: SZ, tol: TOL, chars: CHARS,
+      cells: cells.map(function (c) {
+        return {
+          target: c.target,
+          verdicts: c.verdicts.slice(),
+          strokes: c.strokes.map(function (st) {
+            return st.map(function (p) { return [round(p.x), round(p.y)]; });
+          })
+        };
+      })
+    };
+    var text = JSON.stringify(payload);
+    // Also left here so it can be read from the desktop console.
+    window.KDA_LAST_EXPORT = text;
+    copyText(text);
+  }
+
+  function copyText(text) {
+    var done = function () { eachCell(function (c) { c.say(L.copied, true); }); };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () { fallback(text); });
+        return;
+      }
+    } catch(e) {}
+    fallback(text);
+  }
+
+  /* Webviews without the clipboard API, which includes some of the mobile
+     ones, still copy from a selected textarea. If even that is refused the
+     text is put on screen to be selected by hand — never silently lost. */
+  function fallback(text) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      if (ta.select) { ta.select(); }
+      var ok = document.execCommand && document.execCommand('copy');
+      if (ta.parentNode && ta.parentNode.removeChild) { ta.parentNode.removeChild(ta); }
+      if (ok) { eachCell(function (c) { c.say(L.copied, true); }); return; }
+    } catch(e) {}
+    var box = document.getElementById('kda-dump') || document.createElement('textarea');
+    box.id = 'kda-dump';
+    box.value = text;
+    box.textContent = text;
+    box.readOnly = true;
+    wrap.appendChild(box);
+    eachCell(function (c) { c.say(L.copyFail, false); });
+  }
+
   var sep = document.createElement('span');
   sep.id = 'kda-sep';
 
@@ -1472,6 +1564,7 @@ _CANVAS_JS = r"""(function () {
   settingsBar.appendChild(keepBtn);
   settingsBar.appendChild(restBtn);
   settingsBar.appendChild(chkBtn);
+  settingsBar.appendChild(copyBtn);
   if (!TARGETS.length) { chkBtn.style.display = 'none'; }
   syncCheckUI();
 
@@ -1487,6 +1580,7 @@ _CANVAS_JS = r"""(function () {
     keepBtn.style.display = 'none';
     restBtn.style.display = 'none';
     chkBtn.style.display  = 'none';
+    copyBtn.style.display = 'none';
     sep.style.display     = 'none';
     // Wrap in <details> so it never overlaps card content regardless of
     // layout. Opens automatically when there is something to compare.
@@ -1548,6 +1642,7 @@ def build_block(cfg: dict, expected_field: str | None = None) -> str:
     accept_after = cfg.get("accept_after_misses", 5)
     tol     = cfg.get("check_tolerance", 1.0)
     chars   = cfg.get("canvas_characters", "auto")
+    export  = "1" if cfg.get("stroke_export", False) else "0"
     if chars not in ("auto", "kanji", "all"):
         chars = "auto"
     lang    = _detect_lang()
@@ -1574,6 +1669,7 @@ def build_block(cfg: dict, expected_field: str | None = None) -> str:
         f'data-check="{check}" data-check-mode="{mode}" '
         f'data-tol="{tol}" data-chars="{chars}" '
         f'data-hint-after="{hint_after}" data-accept-after="{accept_after}" '
+        f'data-export="{export}" '
         f'data-expected-field="{escape(expected_field or "", quote=True)}" '
         f'data-lang="{lang}">{expected}</div>'
     )
