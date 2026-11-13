@@ -43,17 +43,15 @@ _CANVAS_JS = r"""(function () {
           keep: 'Keep', fresh: 'Fresh', check: 'Check',
           checkOn: 'Check strokes against the expected character',
           allRight: 'Correct — all {n} strokes',
-          score: '{ok} of {n} strokes correct',
-          missing: '{n} stroke(s) missing',
-          extra: '{n} stroke(s) too many',
+          score: '{ok}/{n} correct',
+          missing: '{n} stroke{s} missing',
+          extra: '{n} stroke{s} too many',
           eShape: 'stroke {i}: wrong shape',
-          ePlace: 'stroke {i}: right shape, wrong place',
-          eExtra: 'stroke {i}: extra stroke',
+          ePlace: 'stroke {i}: wrong place',
           eLen: 'stroke {i}: wrong length',
           eOrder: 'stroke {i}: out of order',
           eRev: 'stroke {i}: drawn backwards',
           okStroke: 'stroke {i} ✓',
-          more: 'and {n} more',
           gLater: 'stroke {i}: that one comes later',
           gRetry: 'stroke {i}: try again',
           gWatch: 'stroke {i}: watch, then copy it',
@@ -68,17 +66,15 @@ _CANVAS_JS = r"""(function () {
           keep: 'Mantener', fresh: 'Nuevo', check: 'Comprobar',
           checkOn: 'Comprobar los trazos con el carácter esperado',
           allRight: '¡Correcto! Los {n} trazos',
-          score: '{ok} de {n} trazos correctos',
-          missing: 'Faltan {n} trazo(s)',
-          extra: 'Sobran {n} trazo(s)',
+          score: '{ok}/{n} correctos',
+          missing: '{n} trazo{s} de menos',
+          extra: '{n} trazo{s} de más',
           eShape: 'trazo {i}: forma incorrecta',
-          ePlace: 'trazo {i}: forma correcta, sitio equivocado',
-          eExtra: 'trazo {i}: trazo de más',
+          ePlace: 'trazo {i}: sitio equivocado',
           eLen: 'trazo {i}: longitud incorrecta',
           eOrder: 'trazo {i}: fuera de orden',
           eRev: 'trazo {i}: dirección invertida',
           okStroke: 'trazo {i} ✓',
-          more: 'y {n} más',
           gLater: 'trazo {i}: ese va después',
           gRetry: 'trazo {i}: inténtalo otra vez',
           gWatch: 'trazo {i}: míralo y cópialo',
@@ -93,17 +89,15 @@ _CANVAS_JS = r"""(function () {
           keep: '保持', fresh: '新規', check: '判定',
           checkOn: '期待される文字と筆画を照合する',
           allRight: '正解 — 全{n}画',
-          score: '{n}画中{ok}画が正しい',
+          score: '{n}画中{ok}画',
           missing: '{n}画不足',
           extra: '{n}画多い',
           eShape: '{i}画目: 形が違います',
-          ePlace: '{i}画目: 形は合っているが位置が違います',
-          eExtra: '{i}画目: 余分な画',
+          ePlace: '{i}画目: 位置が違います',
           eLen: '{i}画目: 長さが違います',
           eOrder: '{i}画目: 筆順が違います',
           eRev: '{i}画目: 方向が逆です',
           okStroke: '{i}画目 ✓',
-          more: 'ほか{n}件',
           gLater: '{i}画目: それはもっと後の画です',
           gRetry: '{i}画目: もう一度',
           gWatch: '{i}画目: 手本を見てなぞってください',
@@ -118,8 +112,17 @@ _CANVAS_JS = r"""(function () {
   var lc = d.lang || (navigator.language || 'en').slice(0, 2);
   var L  = LABELS[lc] || LABELS['en'];
 
+  /* {s} is a plural marker driven by {n}: "falta{s} {n} trazo{s}" comes
+     out right for one and for five, where the "trazo(s)" this used to
+     print was right for neither. Japanese has no plural and simply never
+     uses it. The Spanish strings avoid a verb for the same reason: its
+     plural does not follow the noun's, so "falta"/"faltan" would need a
+     second marker to get right. */
   function fmt(tpl, vals) {
-    return tpl.replace(/\{(\w+)\}/g, function (_, k) { return vals[k]; });
+    return tpl.replace(/\{(\w+)\}/g, function (_, k) {
+      if (k === 's') { return (vals.n === 1 || vals.n === '1') ? '' : 's'; }
+      return vals[k];
+    });
   }
 
   /* ── Stroke checking settings ─────────────────────────────────────────
@@ -662,9 +665,6 @@ _CANVAS_JS = r"""(function () {
 
   var VERDICT_COLORS = { bad: '#d9534f', order: '#e08e0b', rev: '#e08e0b',
                          forced: '#e08e0b' };
-  // How many individual mistakes the verdict line spells out before it
-  // just counts the rest.
-  var MAX_ERRS = 3;
 
   /* Why a stroke matched nothing. Comparing it again with its placement
      taken out separates the three cases worth different advice: the shape
@@ -673,7 +673,8 @@ _CANVAS_JS = r"""(function () {
      Without this everything that fails reads "wrong stroke", which tells
      the writer nothing they didn't already know. */
   function diagnose(drawn, refIdx, refs, xf, i, noFrame, limit) {
-    if (refIdx < 0) { return { v: 'bad', e: fmt(L.eExtra, { i: i + 1 }) }; }
+    // Past the end of the character there is nothing to compare against.
+    if (refIdx < 0) { return { v: 'bad', e: '' }; }
     var refPts = applyXf(refs[refIdx], xf);
     var mine = resample(drawn, NRS), ref = resample(refPts, NRS);
     var lr = pathLength(refPts), ld = pathLength(drawn);
@@ -760,7 +761,10 @@ _CANVAS_JS = r"""(function () {
         var why = diagnose(drawnList[i], expected, refs, xf, i,
                            noFrame || lenient, limit);
         v.push(why.v);
-        errs.push(why.e);
+        /* A stroke past the end of the character needs no words of its
+           own: the verdict already opens by counting the extras, and the
+           stroke is marked on the canvas like any other mistake. */
+        if (expected !== -1) { errs.push(why.e); }
         refOf.push(expected);
         cost += limit;
         if (expected !== -1) { used[expected] = true; }
@@ -810,14 +814,12 @@ _CANVAS_JS = r"""(function () {
       return { text: fmt(L.allRight, { n: refs.length }), good: true };
     }
     parts.push(fmt(L.score, { ok: r.ok, n: refs.length }));
-    // A badly missed 29-stroke kanji would otherwise produce a paragraph.
-    // The first few mistakes are the ones worth fixing anyway, and the
-    // strokes themselves stay marked on the canvas.
-    var shown = r.errs.slice(0, MAX_ERRS);
-    if (r.errs.length > MAX_ERRS) {
-      shown.push(fmt(L.more, { n: r.errs.length - MAX_ERRS }));
-    }
-    return { text: parts.concat(shown).join(' · '), good: false };
+    /* Only the first mistake is named. Listing them produced five lines of
+       red on a phone, which is not something anyone reads — and there is
+       nothing to do with the fourth one until the first is fixed. Which
+       strokes went wrong is on the canvas, in their colour. */
+    if (r.errs.length) { parts.push(r.errs[0]); }
+    return { text: parts.join(' · '), good: false };
   }
 
   /* ── DOM ─────────────────────────────────────────────────────────── */
@@ -1087,15 +1089,21 @@ _CANVAS_JS = r"""(function () {
       // mean something, so the next character's opening strokes start from
       // it instead of from an assumption.
       if (r.xf !== IDENTITY && r.ok >= 3) { saveFit(r.xf); }
-      // Every stroke that went wrong shows where it should have gone —
-      // being told a stroke is wrong without being shown the right one
-      // leaves you nothing to correct towards. They appear only after the
-      // stroke is already committed, so this is feedback, not tracing.
+      /* Where the first wrong stroke should have gone, and only that one,
+         and only with the verdict. Being told a stroke is wrong without
+         being shown the right one leaves nothing to correct towards — but
+         six dashed outlines over eleven strokes is a thicket, and there is
+         nothing to do with the sixth until the first is fixed. Mid-writing
+         it is worse than useless: free drawing has no way to take a stroke
+         back and try it again, so pointing at one interrupts without
+         offering anything. It waits for the character to be finished, or
+         for Check. */
       cell.ghosts = [];
-      for (var i = 0; i < r.v.length; i++) {
+      for (var i = 0; strict && i < r.v.length; i++) {
         var ri = r.refOf[i];
         if (r.v[i] !== 'ok' && ri >= 0) {
           cell.ghosts.push(applyXf(refs[ri], r.frame));
+          break;
         }
       }
       cell.checked = true;
