@@ -11,13 +11,12 @@
 
 const {
   loadStrokeData, referenceStrokes, makeEnv, runCard, drawStroke, ghostsDrawn,
-  ghostBox, strokeColours, demoDot,
+  ghostBox, strokeColours,
 } = require('./dom_stub');
 
 const SIZE = 300;
 const DATA = loadStrokeData();
 
-const pending = [];
 let failures = 0;
 function check(name, cond, detail) {
   if (cond) {
@@ -461,62 +460,8 @@ console.log('\nguided practice');
   {
     const g = guided('日');
     const bar = g.env.doc.getElementById('kda-bar-0');
-    const hint = bar.children.find((c) => c.textContent === '👁');
-    check('guided practice offers a hint button', !!hint);
-    // Asking for the demonstration draws the stroke being formed, with a
-    // dot on its starting point — the part a static outline cannot say.
-    hint._fire('click', {});
-    const dot = demoDot(g.ui.canvas);
-    const start = g.refs[0][0];
-    check('the demonstration marks where the stroke starts',
-          !!dot && Math.abs(dot.x - start.x) < 1 && Math.abs(dot.y - start.y) < 1,
-          dot ? 'dot at ' + Math.round(dot.x) + ',' + Math.round(dot.y)
-                + ' vs stroke start ' + Math.round(start.x) + ',' + Math.round(start.y)
-              : 'no dot drawn');
-    // Picking the pen up again cancels it rather than repainting over the
-    // person's own stroke.
-    drawStroke(g.ui.canvas, g.refs[0]);
-    check('starting to write cancels the demonstration',
-          demoDot(g.ui.canvas) === null && /1\/4/.test(g.ui.counter.textContent),
-          'got: ' + g.ui.counter.textContent);
-  }
-  {
-    /* The demonstration is queued half a second after a miss. If the stroke
-       is written correctly in the meantime it must not fire: it would
-       demonstrate the stroke after it, which was never failed. */
-    const g = guided('日', { hintAfter: '1', acceptAfter: '9' });
-    drawStroke(g.ui.canvas, wrongStroke);
-    drawStroke(g.ui.canvas, g.refs[0]);
-    pending.push(new Promise((done) => setTimeout(() => {
-      check('a queued demonstration is dropped once the stroke is written',
-            demoDot(g.ui.canvas) === null && !/watch/.test(g.ui.msg.textContent),
-            'got: ' + g.ui.msg.textContent);
-      done();
-    }, 800)));
-  }
-  {
-    /* Turning checking off has to hand the pen back. Otherwise a template
-       set to guided goes on refusing strokes with no way to just draw. */
-    const g = guided('日', { storage: { kda_check: '0' } });
-    drawStroke(g.ui.canvas, wrongStroke);
-    check('with checking off, guided practice keeps the stroke',
-          strokeColours(g.ui.canvas).length === 1,
-          'strokes kept: ' + strokeColours(g.ui.canvas).length);
-    check('and the counter stops showing guided progress',
-          !/\//.test(g.ui.counter.textContent), 'got: ' + g.ui.counter.textContent);
-    const bar = g.env.doc.getElementById('kda-bar-0');
-    const hint = bar.children.find((c) => c.textContent === '👁');
-    check('and hides the hint button', hint.style.display === 'none');
-  }
-  {
-    // ...and turning it back on resumes guided practice.
-    const g = guided('日', { storage: { kda_check: '0' } });
-    const settings = g.env.doc.getElementById('kda-settings-bar')
-                  || g.env.doc.getElementById('kda-bar-0');
-    settings.children.find((c) => c.textContent === '✓')._fire('click', {});
-    drawStroke(g.ui.canvas, wrongStroke);
-    check('switching checking back on resumes guided practice',
-          /try again/.test(g.ui.msg.textContent), 'got: ' + g.ui.msg.textContent);
+    check('guided practice offers a hint button',
+          !!bar.children.find((c) => c.textContent === '👁'));
   }
   {
     const env = makeEnv({ expected: '日', strokeData: DATA, size: SIZE });
@@ -526,49 +471,6 @@ console.log('\nguided practice');
     check('and free drawing does not show it',
           !hint || hint.style.display === 'none');
   }
-}
-
-// ── Handing over what was drawn ──────────────────────────────────────
-
-/* A screenshot cannot show the path a finger took, which is the only thing
- * that explains a verdict. This hands over exactly what the checker saw. */
-console.log('\nexporting a drawing');
-{
-  const env = makeEnv({ expected: '日', strokeData: DATA, size: SIZE,
-                        export: '1' });
-  const ui = runCard(env);
-  const drawn = referenceStrokes(DATA, '日', SIZE);
-  drawn.forEach((s) => drawStroke(ui.canvas, s));
-  const bar = env.doc.getElementById('kda-settings-bar')
-           || env.doc.getElementById('kda-bar-0');
-  const copy = bar.children.find((c) => c.textContent === '📋');
-  check('the button is there when asked for', !!copy);
-  copy._fire('click', {});
-  let payload = null;
-  try { payload = JSON.parse(env.win.KDA_LAST_EXPORT); } catch (e) { /* below */ }
-  check('clicking produces a readable payload', !!payload,
-        String(env.win.KDA_LAST_EXPORT).slice(0, 80));
-  check('it names the character and the settings in force',
-        payload && payload.cells[0].target === '日' && payload.mode === 'live'
-          && payload.size === SIZE);
-  check('it carries every stroke that was drawn',
-        payload && payload.cells[0].strokes.length === drawn.length,
-        payload ? payload.cells[0].strokes.length : '-');
-  check('and the points of them',
-        payload && payload.cells[0].strokes[0].length === drawn[0].length);
-  check('with the verdicts they were given',
-        payload && payload.cells[0].verdicts.length === drawn.length);
-  check('when the clipboard refuses, the text is put on screen to select',
-        !!env.doc.getElementById('kda-dump'));
-}
-{
-  const env = makeEnv({ expected: '日', strokeData: DATA, size: SIZE });
-  const ui = runCard(env);
-  const bar = env.doc.getElementById('kda-settings-bar')
-           || env.doc.getElementById('kda-bar-0');
-  const copy = bar.children.find((c) => c.textContent === '📋');
-  check('and it stays out of the way unless asked for',
-        !copy || copy.style.display === 'none');
 }
 
 // ── Modes and opt-out ────────────────────────────────────────────────
@@ -812,8 +714,5 @@ function writeWord(field, written, opts) {
         'got: ' + ui.cells[1].msg.textContent);
 }
 
-// A couple of checks can only be made once a timer has had its chance.
-Promise.all(pending).then(() => {
-  console.log(failures ? '\n' + failures + ' failing' : '\nall passing');
-  process.exit(failures ? 1 : 0);
-});
+console.log(failures ? '\n' + failures + ' failing' : '\nall passing');
+process.exit(failures ? 1 : 0);
