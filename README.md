@@ -118,11 +118,7 @@ demonstrated, drawn from its starting point, and after five it is given to
 you in amber so one stroke cannot trap you on a card. The 👁 button
 demonstrates it whenever you ask.
 
-By default each stroke is judged as you lift the pen — on what can be
-judged that early. Shape, direction and whether it is the stroke that was
-due need nothing but the stroke itself; where it sits and how long it is
-depend on the rest of the character, so those wait for the full verdict,
-which arrives when the last stroke lands and again on the answer side. Set `check_mode` to
+By default each stroke is judged as you lift the pen. Set `check_mode` to
 `"manual"` if you would rather write the whole character undisturbed and
 press **Check** when you are done. Either way the answer side shows the full
 verdict for what you wrote.

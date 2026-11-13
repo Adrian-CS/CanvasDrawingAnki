@@ -97,13 +97,7 @@ live and that choice, like Keep / Fresh, overrides this default on that
 device until changed again.
 
 **`check_mode`** *(string, default `"live"`)*
-- `"live"` — every stroke is judged the moment you lift the pen, on what
-  can be judged that early: its shape, its direction, and whether it is the
-  stroke that was due. Where a stroke sits and how long it is are left to
-  the full verdict, because until the character is finished they are not
-  knowable — where the 木 of 校 belongs depends on where the six strokes
-  after it go. The full verdict arrives when the last stroke lands, and on
-  the answer side.
+- `"live"` — every stroke is judged the moment you lift the pen.
 - `"manual"` — nothing is judged until you press **Check**, so you can
   write the whole character undisturbed.
 - `"guided"` — one stroke at a time, the way the stroke-order apps do it: a
