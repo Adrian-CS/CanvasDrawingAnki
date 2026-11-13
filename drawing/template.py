@@ -869,6 +869,7 @@ _CANVAS_JS = r"""(function () {
     var clrBtn = mkBtn(L.clear, function () {
       cell.strokes = []; cell.verdicts = []; cell.ghosts = [];
       cell.checked = false; cell.expect = 0; cell.misses = 0; cell.reject = null;
+      cancelHint(); stopAnimation();
       say(''); redraw(); tick();
     });
     clrBtn.classList.add(btnSize);
@@ -879,6 +880,7 @@ _CANVAS_JS = r"""(function () {
       // gap in the character.
       if (cell.expect > 0) { cell.expect -= 1; }
       cell.misses = 0; cell.reject = null;
+      cancelHint(); stopAnimation();
       say(''); redraw(); tick();
     });
     undBtn.classList.add(btnSize);
@@ -888,7 +890,7 @@ _CANVAS_JS = r"""(function () {
     var hintBtn = mkBtn('👁', function () { showHint(); });
     hintBtn.classList.add(btnSize);
     hintBtn.title = L.hint;
-    if (!GUIDED) { hintBtn.style.display = 'none'; }
+    if (!(GUIDED && CHECK)) { hintBtn.style.display = 'none'; }
 
     bar.appendChild(clrBtn);
     bar.appendChild(undBtn);
@@ -954,7 +956,7 @@ _CANVAS_JS = r"""(function () {
     function tick() {
       // Guided practice counts towards a known total, which doubles as a
       // progress indicator; free drawing just counts what was drawn.
-      ctr.textContent = (GUIDED && cell.refs)
+      ctr.textContent = (GUIDED && CHECK && cell.refs)
         ? L.strokes + ': ' + cell.strokes.length + '/' + cell.refs.length
         : (cell.strokes.length ? L.strokes + ': ' + cell.strokes.length : '');
       undBtn.disabled = !cell.strokes.length;
@@ -1156,15 +1158,23 @@ _CANVAS_JS = r"""(function () {
     function animateStroke(pts, after) {
       var total = pathLength(pts), t0 = Date.now();
       var DUR = Math.max(350, Math.min(1100, total * 3));
-      cell.animating = true;
+      var run = cell.animating = { live: true };
       function frame() {
+        // Picking up the pen cancels the demonstration: two things
+        // repainting the same canvas would fight over it, and someone who
+        // has started writing is no longer watching.
+        if (!run.live) { redraw(); return; }
         var t = Math.min(1, (Date.now() - t0) / DUR);
         redraw();
         paintPartial(pts, t);
         if (t < 1) { raf(frame); }
-        else { cell.animating = false; redraw(); if (after) { after(); } }
+        else { cell.animating = null; redraw(); if (after) { after(); } }
       }
       frame();
+    }
+
+    function stopAnimation() {
+      if (cell.animating) { cell.animating.live = false; cell.animating = null; }
     }
 
     function paintPartial(pts, t) {
@@ -1199,7 +1209,15 @@ _CANVAS_JS = r"""(function () {
       else { say(fmt(L.score, { ok: right, n: n }), false); }
     }
 
+    /* A demonstration is queued half a second after a miss, by which time
+       the stroke may well have been written. Showing it then would
+       demonstrate the stroke after it — one that was never failed. */
+    function cancelHint() {
+      if (cell.hintTimer) { clearTimeout(cell.hintTimer); cell.hintTimer = null; }
+    }
+
     function acceptStroke(kind) {
+      cancelHint();
       cell.strokes.push(cell.refs[cell.expect].slice());
       cell.verdicts.push(kind);
       cell.expect += 1;
@@ -1246,7 +1264,9 @@ _CANVAS_JS = r"""(function () {
       }
       rejectStroke(drawn, why + ' · ' + fmt(L.gRetry, { i: i }));
       if (cell.misses >= HINT_AFTER) {
-        setTimeout(showHint, 550);
+        cell.hintTimer = setTimeout(function () {
+          cell.hintTimer = null; showHint();
+        }, 550);
       }
     }
 
@@ -1258,7 +1278,9 @@ _CANVAS_JS = r"""(function () {
     }
 
     cvs.addEventListener('pointerdown', function (e) {
-      e.preventDefault(); cvs.setPointerCapture(e.pointerId); dn = true; cur = [pt(e)];
+      e.preventDefault(); cvs.setPointerCapture(e.pointerId);
+      stopAnimation();
+      dn = true; cur = [pt(e)];
     });
     cvs.addEventListener('pointermove', function (e) {
       if (!dn) { return; } e.preventDefault(); cur.push(pt(e)); redraw(); paintStroke(cur);
@@ -1267,7 +1289,10 @@ _CANVAS_JS = r"""(function () {
       if (!dn) { return; } dn = false;
       var drawn = cur.slice();
       cur = [];
-      if (GUIDED && cell.refs && drawn.length > 1) {
+      /* Guided practice only holds the pen while checking is on. With the
+         ✓ toggle off it would otherwise go on refusing strokes, leaving no
+         way to just draw on a template set up this way. */
+      if (GUIDED && CHECK && cell.refs && drawn.length > 1) {
         guidedStroke(drawn);
         return;
       }
@@ -1303,6 +1328,14 @@ _CANVAS_JS = r"""(function () {
 
     cell.bar = bar;
     cell.showHint = showHint;
+    cell.syncHint = function () {
+      hintBtn.style.display = (GUIDED && CHECK && cell.target) ? '' : 'none';
+    };
+    cell.stopGuided = function () {
+      cancelHint(); stopAnimation();
+      cell.misses = 0; cell.reject = null;
+      redraw(); tick();
+    };
     cell.startGuided = function () {
       withRefs(function (ok) {
         if (!ok) { return; }
@@ -1379,9 +1412,10 @@ _CANVAS_JS = r"""(function () {
     chkBtn.classList.toggle('kda-on', CHECK);
     syncCheckUI();
     if (CHECK) {
-      checkAll(CHECK_MODE === 'manual', true);
+      if (GUIDED) { eachCell(function (c) { if (c.target) { c.startGuided(); } }); }
+      else { checkAll(CHECK_MODE === 'manual', true); }
     } else {
-      eachCell(function (c) { c.clearVerdict(); });
+      eachCell(function (c) { c.stopGuided(); c.clearVerdict(); });
     }
   });
   chkBtn.classList.add('kda-settings');
@@ -1397,6 +1431,9 @@ _CANVAS_JS = r"""(function () {
   function syncCheckUI() {
     var show = CHECK && CHECK_MODE === 'manual' && TARGETS.length > 0;
     goBtn.style.display = show ? '' : 'none';
+    // The demonstration belongs to guided practice, so it goes when
+    // checking does.
+    eachCell(function (c) { c.syncHint(); });
   }
 
   /* Judges every cell. `auto` marks the passes nobody asked for — opening a
@@ -1470,11 +1507,11 @@ _CANVAS_JS = r"""(function () {
   eachCell(function (c) { c.redraw(); c.tick(); });
   refreshSummary();
 
-  if (GUIDED) {
+  if (GUIDED && CHECK) {
     // Each canvas needs its reference before the first stroke can be
     // judged against it, rather than on demand as free drawing does.
     eachCell(function (c) { if (c.target) { c.startGuided(); } });
-  } else {
+  } else if (!GUIDED) {
     // A restored front drawing, or the back side showing what was written
     // on the front, both arrive with strokes already in place — judge them
     // right away instead of waiting for the next stroke that may never
