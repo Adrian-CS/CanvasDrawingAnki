@@ -127,9 +127,6 @@ function makeCtx() {
     moveTo: (x, y) => ops.push(['pt', x, y]),
     lineTo: (x, y) => ops.push(['pt', x, y]),
     stroke: () => ops.push(['stroke', state.colour, state.dash]),
-    // The demonstration marks where a stroke starts with a filled dot.
-    arc: (x, y, r) => ops.push(['arc', x, y, r]),
-    fill: () => ops.push(['fill']),
     clearRect: () => ops.push(['clearRect']),
     setLineDash: (d) => { state.dash = (d || []).join(','); },
   };
@@ -158,15 +155,6 @@ function lastFrame(canvas) {
 function ghostsDrawn(canvas) {
   return lastFrame(canvas).filter(
     (op) => op[0] === 'stroke' && op[2] === GHOST_DASH).length;
-}
-
-/** Whether the canvas currently shows a stroke being demonstrated: the
- *  partial stroke is painted in the highlight colour and its start carries
- *  a dot, which nothing else on the canvas draws. */
-function demoDot(canvas) {
-  const frame = lastFrame(canvas);
-  const dot = frame.filter((op) => op[0] === 'arc');
-  return dot.length ? { x: dot[0][1], y: dot[0][2] } : null;
 }
 
 /** The colour each drawn stroke currently carries, in order — the verdict
@@ -203,8 +191,7 @@ function makeEnv(opts) {
   const o = Object.assign({
     size: 300, expected: '', isBack: false, check: '1',
     checkMode: 'live', tol: '1', chars: 'auto', lang: 'en',
-    hintAfter: '3', acceptAfter: '5', export: '0',
-    body: '<div>card</div>',
+    hintAfter: '3', acceptAfter: '5', body: '<div>card</div>',
     strokeData: null, storage: {},
   }, opts);
 
@@ -214,7 +201,6 @@ function makeEnv(opts) {
   doc.head = new Element('head', doc);
   doc.body = new Element('body', doc);
   doc.body.innerHTML = o.body;
-  doc.execCommand = () => false;   // no clipboard in the stub
 
   const anchor = new Element('div', doc);
   anchor.id = 'kda-anchor';
@@ -223,7 +209,7 @@ function makeEnv(opts) {
     gc: '#aaaaaa', bg: '#ffffff', persist: '1', restore: '1',
     keepWindow: '90', check: o.check, checkMode: o.checkMode,
     tol: o.tol, chars: o.chars, lang: o.lang,
-    hintAfter: o.hintAfter, acceptAfter: o.acceptAfter, export: o.export,
+    hintAfter: o.hintAfter, acceptAfter: o.acceptAfter,
   });
   if (o.expected) {
     const span = new Element('span', doc);
@@ -293,5 +279,5 @@ function drawStroke(canvas, pts) {
 module.exports = {
   extractCanvasJs, loadStrokeData, referenceStrokes,
   makeEnv, runCard, drawStroke, cellsOf, ghostsDrawn, ghostBox,
-  strokeColours, demoDot,
+  strokeColours,
 };

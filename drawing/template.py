@@ -59,9 +59,6 @@ _CANVAS_JS = r"""(function () {
           gWatch: 'stroke {i}: watch, then copy it',
           gForced: 'stroke {i}: moving on',
           hint: 'Show me this stroke',
-          copy: 'Copy what I drew',
-          copied: 'Copied — paste it where you were asked to',
-          copyFail: 'Could not copy; select the text below',
           noData: 'Stroke data not found — see the add-on docs',
           noChar: 'No reference for {c}' },
     es: { clear: 'Borrar', undo: 'Deshacer', strokes: 'Trazos', yourWriting: '✎ Tu escritura',
@@ -84,9 +81,6 @@ _CANVAS_JS = r"""(function () {
           gWatch: 'trazo {i}: míralo y cópialo',
           gForced: 'trazo {i}: seguimos',
           hint: 'Enséñame este trazo',
-          copy: 'Copiar lo que he dibujado',
-          copied: 'Copiado — pégalo donde te lo hayan pedido',
-          copyFail: 'No se pudo copiar; selecciona el texto de abajo',
           noData: 'No se encontraron los datos de trazos — consulta la documentación',
           noChar: 'No hay referencia para {c}' },
     ja: { clear: 'クリア', undo: '元に戻す', strokes: '画数', yourWriting: '✎ あなたの字',
@@ -109,9 +103,6 @@ _CANVAS_JS = r"""(function () {
           gWatch: '{i}画目: 手本を見てなぞってください',
           gForced: '{i}画目: 次へ進みます',
           hint: 'この画を見せる',
-          copy: '書いた内容をコピー',
-          copied: 'コピーしました',
-          copyFail: 'コピーできません。下のテキストを選択してください',
           noData: '筆画データが見つかりません — アドオンの説明を参照',
           noChar: '{c} の参照データがありません' }
   };
@@ -142,7 +133,6 @@ _CANVAS_JS = r"""(function () {
   var GUIDED = CHECK_MODE === 'guided';
   // Misses on one stroke before it is demonstrated, and before it is given
   // to you so a single stroke cannot trap you on the card.
-  var EXPORT = d.export === '1';
   var HINT_AFTER = Math.max(1, parseInt(d.hintAfter, 10) || 3);
   var ACCEPT_AFTER = Math.max(HINT_AFTER + 1, parseInt(d.acceptAfter, 10) || 5);
   // Multiplies every matching threshold — >1 is more forgiving.
@@ -400,8 +390,6 @@ _CANVAS_JS = r"""(function () {
       '#kda-wrap button.kda-settings{',
         'padding:3px 9px!important;font-size:12px!important}',
       '#kda-settings-bar{margin-top:6px!important}',
-      '#kda-dump{display:block!important;width:100%!important;height:64px!important;',
-        'margin-top:6px!important;font-size:10px!important}',
       '#kda-sep{width:1px!important;align-self:stretch!important;margin:2px 2px!important;',
         'background:#ccc!important}',
       '.night_mode #kda-sep,.nightMode #kda-sep{background:#555!important}',
@@ -881,7 +869,6 @@ _CANVAS_JS = r"""(function () {
     var clrBtn = mkBtn(L.clear, function () {
       cell.strokes = []; cell.verdicts = []; cell.ghosts = [];
       cell.checked = false; cell.expect = 0; cell.misses = 0; cell.reject = null;
-      cancelHint(); stopAnimation();
       say(''); redraw(); tick();
     });
     clrBtn.classList.add(btnSize);
@@ -892,7 +879,6 @@ _CANVAS_JS = r"""(function () {
       // gap in the character.
       if (cell.expect > 0) { cell.expect -= 1; }
       cell.misses = 0; cell.reject = null;
-      cancelHint(); stopAnimation();
       say(''); redraw(); tick();
     });
     undBtn.classList.add(btnSize);
@@ -902,7 +888,7 @@ _CANVAS_JS = r"""(function () {
     var hintBtn = mkBtn('👁', function () { showHint(); });
     hintBtn.classList.add(btnSize);
     hintBtn.title = L.hint;
-    if (!(GUIDED && CHECK)) { hintBtn.style.display = 'none'; }
+    if (!GUIDED) { hintBtn.style.display = 'none'; }
 
     bar.appendChild(clrBtn);
     bar.appendChild(undBtn);
@@ -968,7 +954,7 @@ _CANVAS_JS = r"""(function () {
     function tick() {
       // Guided practice counts towards a known total, which doubles as a
       // progress indicator; free drawing just counts what was drawn.
-      ctr.textContent = (GUIDED && CHECK && cell.refs)
+      ctr.textContent = (GUIDED && cell.refs)
         ? L.strokes + ': ' + cell.strokes.length + '/' + cell.refs.length
         : (cell.strokes.length ? L.strokes + ': ' + cell.strokes.length : '');
       undBtn.disabled = !cell.strokes.length;
@@ -1170,23 +1156,15 @@ _CANVAS_JS = r"""(function () {
     function animateStroke(pts, after) {
       var total = pathLength(pts), t0 = Date.now();
       var DUR = Math.max(350, Math.min(1100, total * 3));
-      var run = cell.animating = { live: true };
+      cell.animating = true;
       function frame() {
-        // Picking up the pen cancels the demonstration: two things
-        // repainting the same canvas would fight over it, and someone who
-        // has started writing is no longer watching.
-        if (!run.live) { redraw(); return; }
         var t = Math.min(1, (Date.now() - t0) / DUR);
         redraw();
         paintPartial(pts, t);
         if (t < 1) { raf(frame); }
-        else { cell.animating = null; redraw(); if (after) { after(); } }
+        else { cell.animating = false; redraw(); if (after) { after(); } }
       }
       frame();
-    }
-
-    function stopAnimation() {
-      if (cell.animating) { cell.animating.live = false; cell.animating = null; }
     }
 
     function paintPartial(pts, t) {
@@ -1221,15 +1199,7 @@ _CANVAS_JS = r"""(function () {
       else { say(fmt(L.score, { ok: right, n: n }), false); }
     }
 
-    /* A demonstration is queued half a second after a miss, by which time
-       the stroke may well have been written. Showing it then would
-       demonstrate the stroke after it — one that was never failed. */
-    function cancelHint() {
-      if (cell.hintTimer) { clearTimeout(cell.hintTimer); cell.hintTimer = null; }
-    }
-
     function acceptStroke(kind) {
-      cancelHint();
       cell.strokes.push(cell.refs[cell.expect].slice());
       cell.verdicts.push(kind);
       cell.expect += 1;
@@ -1276,9 +1246,7 @@ _CANVAS_JS = r"""(function () {
       }
       rejectStroke(drawn, why + ' · ' + fmt(L.gRetry, { i: i }));
       if (cell.misses >= HINT_AFTER) {
-        cell.hintTimer = setTimeout(function () {
-          cell.hintTimer = null; showHint();
-        }, 550);
+        setTimeout(showHint, 550);
       }
     }
 
@@ -1290,9 +1258,7 @@ _CANVAS_JS = r"""(function () {
     }
 
     cvs.addEventListener('pointerdown', function (e) {
-      e.preventDefault(); cvs.setPointerCapture(e.pointerId);
-      stopAnimation();
-      dn = true; cur = [pt(e)];
+      e.preventDefault(); cvs.setPointerCapture(e.pointerId); dn = true; cur = [pt(e)];
     });
     cvs.addEventListener('pointermove', function (e) {
       if (!dn) { return; } e.preventDefault(); cur.push(pt(e)); redraw(); paintStroke(cur);
@@ -1301,10 +1267,7 @@ _CANVAS_JS = r"""(function () {
       if (!dn) { return; } dn = false;
       var drawn = cur.slice();
       cur = [];
-      /* Guided practice only holds the pen while checking is on. With the
-         ✓ toggle off it would otherwise go on refusing strokes, leaving no
-         way to just draw on a template set up this way. */
-      if (GUIDED && CHECK && cell.refs && drawn.length > 1) {
+      if (GUIDED && cell.refs && drawn.length > 1) {
         guidedStroke(drawn);
         return;
       }
@@ -1340,14 +1303,6 @@ _CANVAS_JS = r"""(function () {
 
     cell.bar = bar;
     cell.showHint = showHint;
-    cell.syncHint = function () {
-      hintBtn.style.display = (GUIDED && CHECK && cell.target) ? '' : 'none';
-    };
-    cell.stopGuided = function () {
-      cancelHint(); stopAnimation();
-      cell.misses = 0; cell.reject = null;
-      redraw(); tick();
-    };
     cell.startGuided = function () {
       withRefs(function (ok) {
         if (!ok) { return; }
@@ -1424,10 +1379,9 @@ _CANVAS_JS = r"""(function () {
     chkBtn.classList.toggle('kda-on', CHECK);
     syncCheckUI();
     if (CHECK) {
-      if (GUIDED) { eachCell(function (c) { if (c.target) { c.startGuided(); } }); }
-      else { checkAll(CHECK_MODE === 'manual', true); }
+      checkAll(CHECK_MODE === 'manual', true);
     } else {
-      eachCell(function (c) { c.stopGuided(); c.clearVerdict(); });
+      eachCell(function (c) { c.clearVerdict(); });
     }
   });
   chkBtn.classList.add('kda-settings');
@@ -1437,80 +1391,12 @@ _CANVAS_JS = r"""(function () {
   var goBtn = mkBtn(L.check, function () { checkAll(true, false); });
   goBtn.classList.add('kda-primary');
 
-  /* Reporting that a stroke was judged wrongly is hard to act on from a
-     screenshot: what matters is the path the finger took, and that cannot
-     be read off a picture. This hands over exactly what the checker saw,
-     so a case can be replayed instead of guessed at. Off unless asked for,
-     since it is a diagnostic rather than something to study with. */
-  var copyBtn = mkBtn('📋', function () { exportDrawing(); });
-  copyBtn.classList.add('kda-settings');
-  copyBtn.title = L.copy;
-  if (!EXPORT) { copyBtn.style.display = 'none'; }
-
-  function exportDrawing() {
-    var round = function (v) { return Math.round(v * 10) / 10; };
-    var payload = {
-      v: 1, mode: CHECK_MODE, size: SZ, tol: TOL, chars: CHARS,
-      cells: cells.map(function (c) {
-        return {
-          target: c.target,
-          verdicts: c.verdicts.slice(),
-          strokes: c.strokes.map(function (st) {
-            return st.map(function (p) { return [round(p.x), round(p.y)]; });
-          })
-        };
-      })
-    };
-    var text = JSON.stringify(payload);
-    // Also left here so it can be read from the desktop console.
-    window.KDA_LAST_EXPORT = text;
-    copyText(text);
-  }
-
-  function copyText(text) {
-    var done = function () { eachCell(function (c) { c.say(L.copied, true); }); };
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done, function () { fallback(text); });
-        return;
-      }
-    } catch(e) {}
-    fallback(text);
-  }
-
-  /* Webviews without the clipboard API, which includes some of the mobile
-     ones, still copy from a selected textarea. If even that is refused the
-     text is put on screen to be selected by hand — never silently lost. */
-  function fallback(text) {
-    try {
-      var ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      if (ta.select) { ta.select(); }
-      var ok = document.execCommand && document.execCommand('copy');
-      if (ta.parentNode && ta.parentNode.removeChild) { ta.parentNode.removeChild(ta); }
-      if (ok) { eachCell(function (c) { c.say(L.copied, true); }); return; }
-    } catch(e) {}
-    var box = document.getElementById('kda-dump') || document.createElement('textarea');
-    box.id = 'kda-dump';
-    box.value = text;
-    box.textContent = text;
-    box.readOnly = true;
-    wrap.appendChild(box);
-    eachCell(function (c) { c.say(L.copyFail, false); });
-  }
-
   var sep = document.createElement('span');
   sep.id = 'kda-sep';
 
   function syncCheckUI() {
     var show = CHECK && CHECK_MODE === 'manual' && TARGETS.length > 0;
     goBtn.style.display = show ? '' : 'none';
-    // The demonstration belongs to guided practice, so it goes when
-    // checking does.
-    eachCell(function (c) { c.syncHint(); });
   }
 
   /* Judges every cell. `auto` marks the passes nobody asked for — opening a
@@ -1549,7 +1435,6 @@ _CANVAS_JS = r"""(function () {
   settingsBar.appendChild(keepBtn);
   settingsBar.appendChild(restBtn);
   settingsBar.appendChild(chkBtn);
-  settingsBar.appendChild(copyBtn);
   if (!TARGETS.length) { chkBtn.style.display = 'none'; }
   syncCheckUI();
 
@@ -1565,7 +1450,6 @@ _CANVAS_JS = r"""(function () {
     keepBtn.style.display = 'none';
     restBtn.style.display = 'none';
     chkBtn.style.display  = 'none';
-    copyBtn.style.display = 'none';
     sep.style.display     = 'none';
     // Wrap in <details> so it never overlaps card content regardless of
     // layout. Opens automatically when there is something to compare.
@@ -1586,11 +1470,11 @@ _CANVAS_JS = r"""(function () {
   eachCell(function (c) { c.redraw(); c.tick(); });
   refreshSummary();
 
-  if (GUIDED && CHECK) {
+  if (GUIDED) {
     // Each canvas needs its reference before the first stroke can be
     // judged against it, rather than on demand as free drawing does.
     eachCell(function (c) { if (c.target) { c.startGuided(); } });
-  } else if (!GUIDED) {
+  } else {
     // A restored front drawing, or the back side showing what was written
     // on the front, both arrive with strokes already in place — judge them
     // right away instead of waiting for the next stroke that may never
@@ -1627,7 +1511,6 @@ def build_block(cfg: dict, expected_field: str | None = None) -> str:
     accept_after = cfg.get("accept_after_misses", 5)
     tol     = cfg.get("check_tolerance", 1.0)
     chars   = cfg.get("canvas_characters", "auto")
-    export  = "1" if cfg.get("stroke_export", False) else "0"
     if chars not in ("auto", "kanji", "all"):
         chars = "auto"
     lang    = _detect_lang()
@@ -1654,7 +1537,6 @@ def build_block(cfg: dict, expected_field: str | None = None) -> str:
         f'data-check="{check}" data-check-mode="{mode}" '
         f'data-tol="{tol}" data-chars="{chars}" '
         f'data-hint-after="{hint_after}" data-accept-after="{accept_after}" '
-        f'data-export="{export}" '
         f'data-expected-field="{escape(expected_field or "", quote=True)}" '
         f'data-lang="{lang}">{expected}</div>'
     )

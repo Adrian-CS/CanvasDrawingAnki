@@ -141,15 +141,6 @@ Guided practice only: how many misses before the stroke is given to you and
 practice moves on. It is marked amber and counted as not earned in the
 verdict. Always at least one more than `hint_after_misses`.
 
-**`stroke_export`** *(boolean, default `false`)*
-Adds a 📋 button that copies what you just drew — the strokes themselves,
-the character they were checked against and the settings in force — so a
-verdict you disagree with can be reproduced exactly instead of described. A
-screenshot cannot show the path a finger took, which is the one thing that
-explains a verdict. It is a diagnostic, so it stays out of the way until
-you turn it on. Nothing is sent anywhere: it copies to your clipboard, and
-if the webview refuses, it puts the text on the card for you to select.
-
 **`check_tolerance`** *(number, default `1.0`)*
 Multiplies how far a stroke may sit from its reference shape before it
 counts as wrong. The default accepts writing that is half-size, in a
