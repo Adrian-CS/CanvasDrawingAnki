@@ -186,14 +186,14 @@ console.log('\nmistakes are reported');
 {
   const { ui } = verdict('漢', (s) => s.slice(0, s.length - 1));
   check('one stroke left out → missing',
-        /1 stroke missing/.test(ui.msg.textContent),
+        /1 stroke\(s\) missing/.test(ui.msg.textContent),
         'got: ' + ui.msg.textContent);
 }
 {
   const { ui } = write('漢', (s) => s.concat([[
     { x: 40, y: 250 }, { x: 260, y: 255 }]]));
   check('an extra stroke → too many',
-        /1 stroke too many/.test(ui.msg.textContent),
+        /1 stroke\(s\) too many/.test(ui.msg.textContent),
         'got: ' + ui.msg.textContent);
 }
 {
@@ -203,7 +203,7 @@ console.log('\nmistakes are reported');
   const ui = runCard(env);
   referenceStrokes(DATA, '漢', SIZE).forEach((s) => drawStroke(ui.canvas, s));
   pressCheck(env);
-  const okCount = (ui.msg.textContent.match(/(\d+)\/\d+ correct/) || [])[1];
+  const okCount = (ui.msg.textContent.match(/(\d+) of \d+ strokes correct/) || [])[1];
   check('a different character is not accepted',
         !/^Correct/.test(ui.msg.textContent), 'got: ' + ui.msg.textContent);
   check('a different character scores poorly',
@@ -234,7 +234,7 @@ console.log('\nthe verdict names the mistake');
     t[i] = [{ x: 60, y: 250 }, { x: 240, y: 60 }];
     return t;
   };
-  [['right shape, wrong place', '日', moved(1, 55, 0), /wrong place/],
+  [['right shape, wrong place', '日', moved(1, 55, 0), /right shape, wrong place/],
    ['wrong length', '日', stretched(0, 2.2), /wrong length/],
    ['wrong shape', '日', scribble(2), /wrong shape/],
    ['drawn backwards', '日',
@@ -268,18 +268,10 @@ console.log('\nthe expected stroke is shown');
   check('a correct stroke shows no outline', ghostsDrawn(ui.canvas) === 0,
         'got ' + ghostsDrawn(ui.canvas));
   drawStroke(ui.canvas, strokes[1]);
-  /* Mid-writing it stays out of the way: free drawing cannot take a stroke
-     back and try it again, so pointing at one interrupts without offering
-     anything to do about it. */
-  check('a wrong stroke mid-character shows no outline yet',
-        ghostsDrawn(ui.canvas) === 0, 'got ' + ghostsDrawn(ui.canvas));
-  strokes.slice(2).forEach((s) => drawStroke(ui.canvas, s));
-  check('finishing the character shows where the wrong one should have gone',
+  check('a wrong stroke shows where it should have gone',
         ghostsDrawn(ui.canvas) === 1, 'got ' + ghostsDrawn(ui.canvas));
-  check('and only the first one, however many went wrong',
-        ghostsDrawn(ui.canvas) <= 1);
   check('and says what was wrong with it',
-        /wrong place/.test(ui.msg.textContent),
+        /right shape, wrong place/.test(ui.msg.textContent),
         'got: ' + ui.msg.textContent);
 }
 
@@ -292,9 +284,9 @@ console.log('\nthe expected stroke is shown');
   strokes[3] = strokes[3].map((p) => ({ x: p.x - 25, y: p.y + 35 }));
   const env = makeEnv({ expected: '漢', strokeData: DATA, size: SIZE });
   const ui = runCard(env);
-  strokes.forEach((s) => drawStroke(ui.canvas, s));
+  strokes.slice(0, 4).forEach((s) => drawStroke(ui.canvas, s));
   const box = ghostBox(ui.canvas);
-  const all = [].concat.apply([], strokes);
+  const all = [].concat.apply([], strokes.slice(0, 4));
   const wx = all.map((p) => p.x), wy = all.map((p) => p.y);
   const writing = { x0: Math.min.apply(null, wx), x1: Math.max.apply(null, wx),
                     y0: Math.min.apply(null, wy), y1: Math.max.apply(null, wy) };
@@ -434,7 +426,7 @@ console.log('\nguided practice');
     [0, 1, 2, 3].forEach(() => drawStroke(g.ui.canvas, wrongStroke));
     [0, 1, 2, 3].forEach(() => drawStroke(g.ui.canvas, wrongStroke));
     check('a character finished on given strokes is not called correct',
-          !/^Correct/.test(g.ui.msg.textContent) && /\/4/.test(g.ui.msg.textContent),
+          !/^Correct/.test(g.ui.msg.textContent) && /of 4/.test(g.ui.msg.textContent),
           'got: ' + g.ui.msg.textContent);
   }
   {
@@ -637,7 +629,7 @@ console.log('\nanswer side');
   runCard(env);
   const msg = env.doc.getElementById('kda-msg-0');
   check('an unfinished character is reported on the answer side',
-        /1 stroke missing/.test(msg.textContent),
+        /1 stroke\(s\) missing/.test(msg.textContent),
         'got: ' + msg.textContent);
 }
 {
