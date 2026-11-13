@@ -127,6 +127,9 @@ function makeCtx() {
     moveTo: (x, y) => ops.push(['pt', x, y]),
     lineTo: (x, y) => ops.push(['pt', x, y]),
     stroke: () => ops.push(['stroke', state.colour, state.dash]),
+    // The demonstration marks where a stroke starts with a filled dot.
+    arc: (x, y, r) => ops.push(['arc', x, y, r]),
+    fill: () => ops.push(['fill']),
     clearRect: () => ops.push(['clearRect']),
     setLineDash: (d) => { state.dash = (d || []).join(','); },
   };
@@ -155,6 +158,15 @@ function lastFrame(canvas) {
 function ghostsDrawn(canvas) {
   return lastFrame(canvas).filter(
     (op) => op[0] === 'stroke' && op[2] === GHOST_DASH).length;
+}
+
+/** Whether the canvas currently shows a stroke being demonstrated: the
+ *  partial stroke is painted in the highlight colour and its start carries
+ *  a dot, which nothing else on the canvas draws. */
+function demoDot(canvas) {
+  const frame = lastFrame(canvas);
+  const dot = frame.filter((op) => op[0] === 'arc');
+  return dot.length ? { x: dot[0][1], y: dot[0][2] } : null;
 }
 
 /** The colour each drawn stroke currently carries, in order — the verdict
@@ -279,5 +291,5 @@ function drawStroke(canvas, pts) {
 module.exports = {
   extractCanvasJs, loadStrokeData, referenceStrokes,
   makeEnv, runCard, drawStroke, cellsOf, ghostsDrawn, ghostBox,
-  strokeColours,
+  strokeColours, demoDot,
 };

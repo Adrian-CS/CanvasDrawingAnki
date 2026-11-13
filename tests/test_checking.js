@@ -11,12 +11,13 @@
 
 const {
   loadStrokeData, referenceStrokes, makeEnv, runCard, drawStroke, ghostsDrawn,
-  ghostBox, strokeColours,
+  ghostBox, strokeColours, demoDot,
 } = require('./dom_stub');
 
 const SIZE = 300;
 const DATA = loadStrokeData();
 
+const pending = [];
 let failures = 0;
 function check(name, cond, detail) {
   if (cond) {
@@ -460,8 +461,62 @@ console.log('\nguided practice');
   {
     const g = guided('日');
     const bar = g.env.doc.getElementById('kda-bar-0');
-    check('guided practice offers a hint button',
-          !!bar.children.find((c) => c.textContent === '👁'));
+    const hint = bar.children.find((c) => c.textContent === '👁');
+    check('guided practice offers a hint button', !!hint);
+    // Asking for the demonstration draws the stroke being formed, with a
+    // dot on its starting point — the part a static outline cannot say.
+    hint._fire('click', {});
+    const dot = demoDot(g.ui.canvas);
+    const start = g.refs[0][0];
+    check('the demonstration marks where the stroke starts',
+          !!dot && Math.abs(dot.x - start.x) < 1 && Math.abs(dot.y - start.y) < 1,
+          dot ? 'dot at ' + Math.round(dot.x) + ',' + Math.round(dot.y)
+                + ' vs stroke start ' + Math.round(start.x) + ',' + Math.round(start.y)
+              : 'no dot drawn');
+    // Picking the pen up again cancels it rather than repainting over the
+    // person's own stroke.
+    drawStroke(g.ui.canvas, g.refs[0]);
+    check('starting to write cancels the demonstration',
+          demoDot(g.ui.canvas) === null && /1\/4/.test(g.ui.counter.textContent),
+          'got: ' + g.ui.counter.textContent);
+  }
+  {
+    /* The demonstration is queued half a second after a miss. If the stroke
+       is written correctly in the meantime it must not fire: it would
+       demonstrate the stroke after it, which was never failed. */
+    const g = guided('日', { hintAfter: '1', acceptAfter: '9' });
+    drawStroke(g.ui.canvas, wrongStroke);
+    drawStroke(g.ui.canvas, g.refs[0]);
+    pending.push(new Promise((done) => setTimeout(() => {
+      check('a queued demonstration is dropped once the stroke is written',
+            demoDot(g.ui.canvas) === null && !/watch/.test(g.ui.msg.textContent),
+            'got: ' + g.ui.msg.textContent);
+      done();
+    }, 800)));
+  }
+  {
+    /* Turning checking off has to hand the pen back. Otherwise a template
+       set to guided goes on refusing strokes with no way to just draw. */
+    const g = guided('日', { storage: { kda_check: '0' } });
+    drawStroke(g.ui.canvas, wrongStroke);
+    check('with checking off, guided practice keeps the stroke',
+          strokeColours(g.ui.canvas).length === 1,
+          'strokes kept: ' + strokeColours(g.ui.canvas).length);
+    check('and the counter stops showing guided progress',
+          !/\//.test(g.ui.counter.textContent), 'got: ' + g.ui.counter.textContent);
+    const bar = g.env.doc.getElementById('kda-bar-0');
+    const hint = bar.children.find((c) => c.textContent === '👁');
+    check('and hides the hint button', hint.style.display === 'none');
+  }
+  {
+    // ...and turning it back on resumes guided practice.
+    const g = guided('日', { storage: { kda_check: '0' } });
+    const settings = g.env.doc.getElementById('kda-settings-bar')
+                  || g.env.doc.getElementById('kda-bar-0');
+    settings.children.find((c) => c.textContent === '✓')._fire('click', {});
+    drawStroke(g.ui.canvas, wrongStroke);
+    check('switching checking back on resumes guided practice',
+          /try again/.test(g.ui.msg.textContent), 'got: ' + g.ui.msg.textContent);
   }
   {
     const env = makeEnv({ expected: '日', strokeData: DATA, size: SIZE });
@@ -714,5 +769,8 @@ function writeWord(field, written, opts) {
         'got: ' + ui.cells[1].msg.textContent);
 }
 
-console.log(failures ? '\n' + failures + ' failing' : '\nall passing');
-process.exit(failures ? 1 : 0);
+// A couple of checks can only be made once a timer has had its chance.
+Promise.all(pending).then(() => {
+  console.log(failures ? '\n' + failures + ' failing' : '\nall passing');
+  process.exit(failures ? 1 : 0);
+});
